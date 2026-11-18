@@ -1,4 +1,5 @@
 import os
+import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
@@ -10,7 +11,7 @@ from app.gitlab_poller import poll_once
 from app.storage.db import create_database
 from app.storage.inbox import enqueue
 from app.storage.migrate import migrate
-from app.storage.models import InboxEvent, Release
+from app.storage.models import InboxEvent, Release, TraceBuild, TraceFix
 from app.supervisor.graph import build_graph
 from app.worker import process_one, retry_event
 from config.settings import Settings
@@ -114,6 +115,9 @@ def test_postgres_pollers_serialize_per_project(postgres):
         def release_tags(self, project):
             return []
 
+        def hotfix_tags(self, project):
+            return []
+
     client = GitLab()
     assert poll_once(factory, settings, client) == 0
     client.updated_at = "2026-01-01T00:01:00Z"
@@ -129,3 +133,63 @@ def test_postgres_pollers_serialize_per_project(postgres):
     with factory() as session:
         events = session.scalars(select(InboxEvent).where(InboxEvent.source == "gitlab_poll")).all()
         assert len(events) == 1
+
+
+def test_postgres_traceability_index_is_idempotent(postgres, monkeypatch):
+    from app.traceability import index_build
+    _, _, factory = postgres
+    build_sha, fix_sha = "a" * 40, "b" * 40
+    digest = "sha256:" + "c" * 64
+    settings = Settings(
+        gitlab_url="https://gitlab.example", gitlab_token="token", gitlab_poll_project="pg/chart",
+        harbor_url="https://harbor.example", harbor_username="user", harbor_password="password",
+        traceability_enabled=True, traceability_build_jobs="publish", traceability_jira_prefixes="GVH",
+        traceability_harbor_project="charts", traceability_harbor_repository="chart",
+    )
+
+    class GitLab:
+        def __init__(self, *args):
+            pass
+
+        def project_id(self, project):
+            return 901
+
+        def job(self, project, job):
+            return {"id": 902, "name": "publish", "status": "success", "ref": "release/VN1",
+                    "commit": {"id": build_sha}, "pipeline": {"id": 903, "sha": build_sha}}
+
+        def artifact_file(self, project, job, path, *, max_bytes):
+            return json.dumps({
+                "schema_version": 1, "commit_sha": build_sha,
+                "chart": {"name": "app", "version": "1.10", "harbor_project": "charts",
+                          "harbor_repository": "chart", "tag": "1.10", "digest": digest},
+                "fixes": [{"commit_sha": fix_sha}],
+            }).encode()
+
+        def merge_base(self, project, first, second):
+            return fix_sha
+
+        def commit(self, project, sha):
+            return {"id": sha, "message": "GVH1797 fix"}
+
+        def close(self):
+            pass
+
+    class Harbor:
+        def __init__(self, *args):
+            pass
+
+        def artifact(self, *args):
+            return {"digest": digest}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.traceability.GitLabClient", GitLab)
+    monkeypatch.setattr("app.traceability.HarborClient", Harbor)
+    with factory.begin() as session:
+        first = index_build(session, settings, 901, 902)
+        assert index_build(session, settings, 901, 902).id == first.id
+    with factory() as session:
+        assert session.scalar(select(TraceBuild).where(TraceBuild.project_id == 901)).digest == digest
+        assert session.scalar(select(TraceFix).where(TraceFix.jira_id == "GVH1797")).commit_sha == fix_sha

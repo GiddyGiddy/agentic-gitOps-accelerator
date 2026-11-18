@@ -15,11 +15,12 @@ from app.llm.advisory import generate_advisory
 from app.llm.models import AdvisoryInput, FindingCategory
 from app.mcp.client import ReadOnlyMCPClient
 from app.storage.db import create_database
-from app.storage.models import Approval, AuditEvent, InboxEvent, OutboxAction, Release, utcnow
+from app.storage.models import Approval, AuditEvent, InboxEvent, OutboxAction, Release, TraceDeployment, TraceTag, utcnow
 from app.supervisor.graph import build_graph
 from app.supervisor.guardrails import PolicyViolation, require_approver
 from app.tools.argocd_client import ArgoCDClient
 from app.tools.gitlab_client import GitLabClient
+from app.traceability import SHA, build_job_names, index_build
 from config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -30,15 +31,29 @@ def handle_event(session: Session, item: InboxEvent, settings: Settings) -> dict
     result: dict = {"status": "recorded"}
     reference = kind
     if kind == "tag":
-        version = payload["ref"].removeprefix("refs/tags/REL/")
+        ref = payload["ref"]
+        version = ref.split("/", 3)[-1]
         project_id = int(payload["project_id"])
         reference = version
-        release = session.get(Release, version)
-        if release and release.project_id != project_id:
-            raise PolicyViolation("Release version already belongs to another project")
-        if not release:
-            session.add(Release(version=version, project_id=project_id))
-        result = {"status": "release_recorded", "release": version}
+        if settings.traceability_enabled:
+            sha = payload.get("checkout_sha")
+            if not isinstance(sha, str) or not SHA.fullmatch(sha):
+                raise ValueError("Tag event lacks a valid commit SHA")
+            session.add(TraceTag(source=settings.gitlab_url.rstrip("/"), project_id=project_id,
+                                 event_id=item.id, name=ref.removeprefix("refs/tags/"), commit_sha=sha))
+        if ref.startswith("refs/tags/HOT/"):
+            result = {"status": "hotfix_tag_observed", "tag": version}
+        else:
+            release = session.get(Release, version)
+            if release and release.project_id != project_id:
+                raise PolicyViolation("Release version already belongs to another project")
+            if not release:
+                session.add(Release(version=version, project_id=project_id))
+            result = {"status": "release_recorded", "release": version}
+    elif kind == "build":
+        build = index_build(session, settings, int(payload["project_id"]), int(payload["job_id"]))
+        reference = f"{build.project_id}:{build.job_id}"
+        result = {"status": "build_indexed", "chart_version": build.chart_version, "digest": build.digest}
     elif kind == "merge_request":
         attrs = payload["object_attributes"]
         project_id, iid = int(payload["project"]["id"]), int(attrs["iid"])
@@ -66,18 +81,17 @@ def handle_event(session: Session, item: InboxEvent, settings: Settings) -> dict
             result["advisory"] = generate_advisory(settings, AdvisoryInput(task="routing", categories=categories))
     elif kind == "job":
         name = payload.get("build_name", "")
-        if name.startswith("deploy_release_") and payload.get("build_status") == "success":
+        if settings.traceability_enabled and name in build_job_names(settings) and payload.get("build_status") == "success":
+            build = index_build(session, settings, int(payload["project_id"]), int(payload["build_id"]))
+            reference = f"{build.project_id}:{build.job_id}"
+            result = {"status": "build_indexed", "chart_version": build.chart_version, "digest": build.digest}
+        elif name.startswith("deploy_release_") and payload.get("build_status") == "success":
             project_id, job_id = int(payload["project_id"]), int(payload["build_id"])
             reference = f"{project_id}:{job_id}"
             if settings.mcp_mode == "mcp":
                 mcp = ReadOnlyMCPClient(settings)
                 deployments = parse_deploy_csv(mcp.artifact_file(project_id, job_id, settings.deploy_csv_path))
-                checks = [
-                    {"application": entry.application, "chart_version": entry.chart_version,
-                     "repository": entry.repository,
-                     "healthy": application_is_healthy(mcp.application(entry.application), entry.chart_version)}
-                    for entry in deployments
-                ]
+                applications = [mcp.application(entry.application) for entry in deployments]
             else:
                 gitlab = GitLabClient(settings.gitlab_url, settings.gitlab_token, False)
                 try:
@@ -88,14 +102,24 @@ def handle_event(session: Session, item: InboxEvent, settings: Settings) -> dict
                     gitlab.close()
                 argocd = ArgoCDClient(settings.argocd_url, settings.argocd_token)
                 try:
-                    checks = [
-                        {"application": entry.application, "chart_version": entry.chart_version,
-                         "repository": entry.repository,
-                         "healthy": application_is_healthy(argocd.application(entry.application), entry.chart_version)}
-                        for entry in deployments
-                    ]
+                    applications = [argocd.application(entry.application) for entry in deployments]
                 finally:
                     argocd.close()
+            checks = [
+                {"application": entry.application, "chart_version": entry.chart_version,
+                 "repository": entry.repository, "healthy": application_is_healthy(app, entry.chart_version)}
+                for entry, app in zip(deployments, applications)
+            ]
+            if settings.traceability_enabled:
+                for entry, app in zip(deployments, applications):
+                    status = app.get("status", {})
+                    sync, health = status.get("sync", {}), status.get("health", {})
+                    session.add(TraceDeployment(
+                        source=settings.gitlab_url.rstrip("/"), event_id=item.id, project_id=project_id,
+                        job_id=job_id, application=entry.application, chart_version=entry.chart_version,
+                        repository=entry.repository, artifact_path=settings.deploy_csv_path, sync_status=sync.get("status"),
+                        health_status=health.get("status"), comparison_revision=sync.get("revision"),
+                    ))
             result = {"status": "reconciled", "deployments": checks}
             if settings.llm_enabled:
                 category = (

@@ -76,7 +76,8 @@ class OpenAICompatibleProvider:
             messages=[
                 {"role": "system", "content": (
                     "Classify the supplied unordered generic keywords as exactly one of "
-                    "deployed_version, branch_comparison, or unsupported. If ambiguous, use "
+                    "deployed_version, branch_comparison, jira_fix (which chart contains a fix), "
+                    "release_origin (planned release or emergency hotfix), or unsupported. If ambiguous, use "
                     "unsupported. Do not infer resource names. Return JSON with only intent."
                 )},
                 {"role": "user", "content": json.dumps({"keywords": keywords})},

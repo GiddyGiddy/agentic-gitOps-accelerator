@@ -1,10 +1,50 @@
 # GitOps agent control plane
 
 A Python/FastAPI starting point for the requested event-driven supervisor and
-four GitOps workers. It integrates with GitLab, Argo CD, and PostgreSQL using
+four GitOps workers. It integrates with GitLab™, Argo CD, and PostgreSQL using
 configurable example contracts. **This is not a production-ready release
 orchestrator.** No deployment should rely on it as a safety gate without
 completing and testing the items below against your actual systems.
+
+GITLAB is a trademark of GitLab Inc. in the United States and other countries
+and regions.
+
+## Solution Architecture
+
+![Solution architecture for the GitOps agent control plane](./docs/solution-architecture.svg)
+
+The control plane wraps existing GitLab CI, Harbor and Argo CD processes; it
+does not replace them or write directly to workload clusters.
+
+| Component | Responsibility and boundary |
+| --- | --- |
+| API and event worker | Authenticate and persist incoming events, process the inbox, record audit results and checkpoint event outcomes with LangGraph. GitLab polling and GitLab webhook ingestion are alternative modes, not concurrent sources. |
+| Routing agent | The event worker calls routing checks for MR events; findings are advisory, not GitLab merge gates. |
+| Reconciliation agent | The event worker compares deployment CSV observations with Argo CD application state. |
+| Preflight agent | A separate Helm-rendering CLI for an independently isolated CI runner; not wired into the supervisor. |
+| Promotion agent | A policy helper, not an automated rollout and not wired into the supervisor. |
+| Query agent and traceability | The opt-in read-only query endpoint correlates indexed provenance, GitLab, Harbor and Argo CD evidence. **Azure OpenAI is required when the query endpoint is enabled**: the API extracts fixed generic keywords and sends those to the model for intent classification, not the raw question or repository data. |
+| Bundles and rollback | Optional approved bundles support drift comparison. Rollback requires a separately authorized approval and enabled writes, and stages only a draft GitLab MR; it does not merge or deploy. |
+| Storage and integrations | PostgreSQL holds the inbox, ledger and checkpoints. Direct clients are the default; optional MCP servers expose read-only tools. Key Vault CSI supplies worker and poller secrets, while API credentials must be provisioned separately. |
+
+**Deployment status:** The diagram includes locally implemented optional
+features, not just what is deployed. The last confirmed AKS staging environment
+was stopped, and its image predates query, bundle and rollback functionality.
+Harbor and Argo CD integration and the newer workflows still require real
+end-to-end validation. The trusted identity gateway is external and has not
+been implemented. See [Important limitations](#important-limitations) before
+enabling any integration.
+
+The named agents are implemented as Python components. Currently LangGraph
+records event outcomes; it does **not** orchestrate these components as graph
+nodes. Azure OpenAI advisories for routing and reconciliation are separately
+optional and do not authorize actions.
+
+The diagram uses [Microsoft Azure architecture icons](https://learn.microsoft.com/en-us/azure/architecture/icons/)
+and official [Harbor](https://goharbor.io/) and [Argo CD](https://argo-cd.readthedocs.io/)
+project artwork. The GitLab integration uses a generic symbol because
+[GitLab's trademark guidelines](https://handbook.gitlab.com/handbook/marketing/brand-experience/trademark-guidelines/)
+restrict logo use.
 
 ## What works
 
@@ -15,8 +55,10 @@ completing and testing the items below against your actual systems.
   SQL tables persist releases, approvals and audit results.
 - GitLab MR hooks fetch a diff and apply the example routing rules. Optional
   comments require `GITOPS_WRITE_ENABLED=true`.
-- An optional GitLab poller observes merge requests and `REL/*` tags and
+- An optional GitLab poller observes merge requests, `REL/*` and `HOT/*` tags and
   submits changes to the same worker inbox, without requiring inbound webhooks.
+- An opt-in traceability index verifies CI provenance manifests, Git ancestry
+  and Harbor digests; it can also record deployment CSV and Argo CD observations.
 - Successful GitLab deployment job hooks fetch a CSV artifact and check the
   current Argo CD Application health, sync state and chart revision.
 - The preflight CLI renders tenant values and compares ConfigMap keys against a
@@ -30,6 +72,13 @@ completing and testing the items below against your actual systems.
 - Optional Azure OpenAI or OpenAI-compatible self-hosted model advisories
   explain routing findings and reconciliation health. They are disabled until
   configured and do not control policy, approvals, or deployment actions.
+- An optional, authenticated read-only query endpoint supports chart-version,
+  GitLab ref-comparison, Jira fix and release-origin candidate questions using
+  restricted Azure model routing.
+- Opt-in release bundles snapshot indexed CI provenance, require explicit
+  gateway-mediated approval, and compare approved snapshots with Argo CD.
+- A separately gated rollback API can propose and, after explicit approval,
+  stage a draft GitLab merge request for allowlisted configuration files.
 - The Helm chart uses a non-root service account with no Kubernetes permissions,
   no mounted API token, a read-only filesystem and an externally managed secret.
 
@@ -37,14 +86,25 @@ completing and testing the items below against your actual systems.
 
 - Checkpointed graphs record event outcomes per thread, but the multi-step
   promotion state machine, human-in-the-loop interrupt and job-to-release
-  correlation are not implemented. Job and Argo CD events have individual
-  threads; only release tags and approvals share a release thread. Checkpoints
+  correlation are not implemented. Poll/backfill events for the same build
+  share a build thread; release tags and approvals share a release thread. Checkpoints
   and application transactions use separate connections: the inbox and ledger
   are authoritative if a checkpoint is ahead after a crash. Never initiate an
   external action solely from checkpoint state.
 - The model is advisory only and is not an autonomous supervisor. Preflight,
   promotion, rollback, and ChatOps have no model integration. Model output is
   untrusted, may be inaccurate, and requires human review.
+- The query endpoint has a shared deployment-level secret, not individual
+  identities or per-user authorization. Everyone with the secret can query all
+  configured resources using the service's upstream credentials. It has no
+  per-user audit trail, rate limiting, Jira API integration, rollback, or
+  mutation capabilities. Release bundles use separate endpoints and controls.
+- Bundle approval depends on a separately implemented trusted identity gateway
+  and trusted CI provenance. It is not a promotion authorization or proof of
+  live pod image IDs, deployed chart digest, or package contents.
+- Rollback stages GitLab changes only when explicitly enabled and authorized;
+  it does not merge or deploy. It is not integrated into the natural-language
+  query endpoint or supervisor.
 - **No automatic promotion, job play, branch creation, corrected MR, hotfix,
   rollback, health polling, or Teams notification is wired into the supervisor.**
   An approval is recorded but does not advance a release. The API client
@@ -113,7 +173,16 @@ Important variables:
 | `GITLAB_WEBHOOK_SECRET` | GitLab webhook secret |
 | `GITLAB_WEBHOOK_ENABLED` | Accept GitLab webhooks; default `true` |
 | `GITLAB_POLL_PROJECT` | Exact GitLab project path, e.g. `group/project` |
-| `GITLAB_POLL_SECONDS` | Minimum time between poll starts; default `60` |
+| `GITLAB_POLL_SECONDS` | Minimum time between MR/tag poll starts; default `60` |
+| `GITLAB_BUILD_POLL_ENABLED` | Poll configured successful build/deploy jobs; default `false`, inactive until traceability is enabled |
+| `GITLAB_BUILD_POLL_SECONDS` | Build/deploy job polling interval; default `60`, minimum `30` |
+| `TRACEABILITY_ENABLED` | Enable provenance indexing and deployment observations; default `false` |
+| `TRACEABILITY_BUILD_JOBS` | Comma-separated exact successful CI build job names |
+| `TRACEABILITY_DEPLOY_JOBS` | Optional exact deployment job names, each beginning `deploy_release_` |
+| `TRACEABILITY_MANIFEST_PATH` | CI job artifact path; default `gitops-provenance.json` |
+| `TRACEABILITY_HARBOR_PROJECT`, `TRACEABILITY_HARBOR_REPOSITORY` | Exact authorized chart registry coordinates |
+| `TRACEABILITY_JIRA_PREFIXES` | Comma-separated Jira key prefixes, e.g. `GVH` |
+| `TRACEABILITY_PATCH_DIRECTORY` | Repository directory containing patch files; default `chart-patch-files` |
 | `ARGOCD_URL`, `ARGOCD_TOKEN`, `ARGOCD_WEBHOOK_SECRET` | Read-only Argo CD API and separate notification secret |
 | `DEPLOY_CSV_PATH` | Artifact path within a GitLab job, default `deploy_output.csv` |
 | `HARBOR_URL`, `HARBOR_USERNAME`, `HARBOR_PASSWORD` | Harbor read-only integration credentials |
@@ -121,6 +190,17 @@ Important variables:
 | `TEAMS_GATEWAY_URL` | HTTPS gateway notification endpoint for the notifier primitive |
 | `TEAMS_APPROVERS` | Comma-separated immutable gateway identity allowlist |
 | `STATUS_SECRET` | Separate secret for reading event status |
+| `QUERY_ENABLED` | Enable read-only queries; default `false` |
+| `QUERY_SECRET` | Dedicated secret for the query endpoint; do not reuse other service credentials |
+| `QUERY_APPLICATIONS` | Comma-separated exact Argo CD application allowlist |
+| `QUERY_PROJECTS` | Comma-separated exact GitLab project path allowlist |
+| `BUNDLE_ENABLED` | Enable release-bundle endpoints; default `false` |
+| `BUNDLE_GATEWAY_SECRET` | Dedicated secret shared only with the trusted identity gateway |
+| `BUNDLE_CONFIG_PROJECTS` | Exact comma-separated GitLab configuration project allowlist |
+| `BUNDLE_IMAGE_REPOSITORIES` | Exact comma-separated Harbor image repositories, `project/repository` without registry hostname |
+| `ROLLBACK_ENABLED` | Enable rollback proposal, approval and execution endpoints; default `false` |
+| `ROLLBACK_GATEWAY_SECRET` | Dedicated secret shared only with the trusted identity gateway |
+| `ROLLBACK_TARGETS` | JSON mapping application names to exact target branches and file allowlists |
 | `WRITE_ENABLED` | Explicit opt-in for GitLab write methods; default `false` |
 | `CONFIG_DIR` | Directory containing the two YAML policy files |
 | `WORKER_POLL_SECONDS` | Delay when no work is available; default `2` |
@@ -147,6 +227,324 @@ GitLab and Argo CD API URLs must use HTTPS. Configure least-privilege GitLab
 and Argo CD credentials and restrict the ingress to the intended sources.
 Routing and rollout YAML are illustrative; adapt both and rebuild the image.
 
+## Read-only natural-language queries
+
+The query service is disabled by default. Configure `GITOPS_QUERY_ENABLED=true`,
+a dedicated `GITOPS_QUERY_SECRET`, and **both** nonempty allowlists
+`GITOPS_QUERY_APPLICATIONS` and `GITOPS_QUERY_PROJECTS`. Provision the secret
+separately from all other credentials. Use the existing Azure model settings
+(`LLM_PROVIDER=azure_openai`, `LLM_MODEL`, `LLM_AZURE_ENDPOINT`, and the chosen
+`LLM_AZURE_AUTH`). `LLM_ENABLED` controls worker advisories separately; enabling
+queries independently authorizes model requests. Configure read-only Argo CD
+and GitLab credentials for the API process. Both service URLs must be HTTPS.
+
+Put this endpoint behind a trusted TLS gateway with restricted ingress; the
+shared secret is not user authentication. Use least-privilege upstream service
+accounts and rotate the query secret securely. Do not send secrets as query
+fields, command-line arguments, or in logs. The chart's existing GitLab Key
+Vault mount is for the worker and poller, **not** the API; API credentials and
+Azure identity access must be provisioned and validated separately before any
+deployment. This functionality is not enabled or deployed by default.
+
+`POST /queries` requires `X-Query-Secret`. Example JSON bodies:
+
+```json
+{"question":"Which chart version is deployed in viseca-prod?","application":"viseca-prod"}
+```
+
+```json
+{"question":"What changed between master and release/VN2608-1A?","project":"team/chart","from_ref":"master","to_ref":"release/VN2608-1A"}
+```
+
+With the traceability index configured, two additional query examples are:
+
+```json
+{"question":"Which chart package contained Jira fix GVH1797?","project":"team/chart","jira_id":"GVH1797"}
+```
+
+```json
+{"question":"Was this a planned release or emergency hotfix?","project":"team/chart","chart_version":"260801.5"}
+```
+
+The application can be inferred when exactly one authorized name appears in the
+question. The project can be omitted only if there is exactly one authorized
+project; refs can be omitted when the question includes `between <ref> and
+<ref>`. Explicit fields are recommended. Refs need not be branches: GitLab
+compares the specified refs in the `from_ref` to `to_ref` direction. Unsupported,
+ambiguous, write-oriented, or unauthorized requests fail rather than triggering
+actions. The Azure model receives only a fixed vocabulary of generic keywords,
+never the raw question, resource names, refs, repository content, diffs, or
+service credentials. It selects a strictly validated intent; local code
+performs all resource authorization and read-only operations.
+
+Responses provide an observation time, evidence links and limitations.
+Chart-version resolution requires a single-source Argo CD Application, a
+reconciliation timestamp no more than five minutes old, `Synced` status, and a
+matching latest successful deployment-history revision and source. For a Helm
+repository, its revision is interpreted as the chart version; for a Git-backed
+chart, the service reads `Chart.yaml` at the recorded commit from the same
+configured GitLab host and an allowlisted project. Missing, stale, unsynced,
+conflicting, multi-source, or unauthorized evidence produces no chart version.
+Argo CD sync/history is not independent proof of live workloads; health and
+timestamps are returned for review. GitLab comparisons return changed paths and
+bounded textual version/tag hints, not a YAML-aware diff. Truncated or missing
+diffs and timeouts are marked incomplete; GitLab limits can still omit changes
+without signalling truncation. Source data and results may be sensitive:
+protect the gateway, transport and client logs.
+
+## Traceability index and build provenance
+
+This feature is off by default. Before enabling it, run `gitops-migrate` on the
+application database and configure the same traceability settings on the
+worker, poller, and query API. Set `GITOPS_TRACEABILITY_ENABLED=true`, the
+existing `GITOPS_GITLAB_POLL_PROJECT` to the exact chart project, exact build
+job names, Jira prefixes, and authorized Harbor coordinates. The worker needs
+read-only GitLab API/repository/artifact and Harbor access; the API needs GitLab
+API access, database access and, for application queries, read-only Argo CD.
+The Harbor credentials belong in the externally managed secret, not Helm values.
+Indexing always uses the direct GitLab and Harbor clients, even in MCP mode.
+Configuration currently supports one GitLab chart project and one Harbor
+project/repository per deployment.
+
+The configured successful build job must publish the following JSON as a GitLab
+job artifact at `GITOPS_TRACEABILITY_MANIFEST_PATH`. The example values are
+illustrative, **not** a real deployment or evidence:
+
+```json
+{
+  "schema_version": 1,
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "chart": {
+    "name": "example",
+    "version": "260801.5",
+    "harbor_project": "charts",
+    "harbor_repository": "repo/chart",
+    "tag": "260801.5",
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "fixes": [
+    {
+      "commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "patch_paths": ["chart-patch-files/GVH1797/patch.yaml"]
+    }
+  ]
+}
+```
+
+Create and publish this manifest in **your chart pipeline**; this project does
+not modify or deploy that pipeline. The manifest is limited to 64 KiB, 50 fix
+commits, 20 patch files per fix and 50 patch files overall. Every fix commit must be an ancestor of the
+job's build commit. Jira references are extracted from those commit messages and
+the paths of explicitly listed files under the configured patch directory; the
+files must exist at the build commit. Other commits and patch files are not
+scanned. The job's successful status, configured name, project, commit and
+pipeline are checked independently; the Harbor tag must resolve to the claimed
+SHA-256 digest at indexing time. Missing artifacts, ancestry conflicts, moved
+tags, mismatched registry coordinates, or malformed manifests fail the inbox
+event; they do not produce success-shaped records. CI authors and their build
+system must be trusted: a manifest and ancestry do not independently prove a
+fix was included in a chart or is effective, and a point-in-time tag check does
+not make a Harbor tag immutable. Results contain the digest, manifest hash,
+observation time and source links. Do not treat them as a signed attestation.
+
+Enable the optional bounded job poller with
+`GITOPS_GITLAB_BUILD_POLL_ENABLED=true`. It polls the latest 100 successful
+project jobs on a separate interval (at least 30 seconds), selecting only the
+configured exact build and optional deploy job names. Its first snapshot
+establishes a separate baseline and skips existing jobs; changing the job-name
+configuration creates a new baseline. A full window is logged as potentially
+incomplete. Deployment jobs use the existing CSV contract and record its chart
+claims alongside Argo CD sync/health observations; the CSV has no digest, so
+these do not prove which indexed package was deployed. The staging values
+request job polling, but it stays inactive until traceability is enabled and
+configured. No staging deployment is performed by editing those values.
+
+For explicit history backfill, identify retained successful build job IDs in
+GitLab and run `python -m app.traceability --job-id 42 --job-id 43` with the
+same configuration and database as the worker. This enqueues those IDs only;
+the worker must be running to validate and index them. Backfill is idempotent
+for repeated requests; inspect failures via the existing event-status and worker
+recovery procedures. It does not discover historical jobs, reconstruct missing
+artifacts, backfill old tags or automatically replay old deployment CSVs.
+Polling and backfill may therefore leave gaps. Jira answers are candidates,
+not proof that no other package contains the fix. Release/hotfix answers
+classify candidate builds using their recorded ref and current same-commit
+`REL/*`/`HOT/*` tags. Conflicting signals are reported as ambiguous; the
+deployment origin remains **unverified** without digest-bearing deployment
+evidence. Indexed data can be sensitive; restrict database access and retention.
+
+## Approved release bundles and drift
+
+This feature is disabled by default and has not been deployed. Run
+`gitops-migrate`, configure the traceability index above, and enable the query
+service and `GITOPS_BUNDLE_ENABLED`. Set the dedicated
+`GITOPS_BUNDLE_GATEWAY_SECRET`, `GITOPS_TEAMS_APPROVERS`, and the two bundle
+allowlists. `QUERY_PROJECTS` must include the chart project and every permitted
+configuration project; `QUERY_APPLICATIONS` must include every application in
+the bundle. The API process also needs read-only access to the database, GitLab
+jobs, artifacts and configuration commits, Harbor artifacts, and Argo CD.
+Use HTTPS, least-privilege credentials, restricted network access, and externally
+managed secrets. Bundle and query secrets must be distinct from each other and
+the other configured service credentials.
+
+The existing Teams gateway is only a contract, not an identity provider. Before
+enabling bundle creation or approval, independently implement a trusted TLS
+gateway that authenticates each user, checks their authorization, derives the
+immutable actor identity itself (never trust a client-supplied actor), and
+protects the gateway secret. The actor must exactly match `TEAMS_APPROVERS`.
+Anyone holding the gateway secret can impersonate any allowlisted actor; the
+API itself does not verify user identity. The query secret separately grants
+access to all configured bundle reads and drift results.
+
+For bundle creation, extend the retained CI artifact shown above to schema
+version 2 by setting `"schema_version": 2` and adding, for example:
+
+```json
+"environments": [
+  {
+    "application": "viseca-prod",
+    "config_project": "team/config",
+    "config_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "images": [
+      {
+        "repository": "team/backend",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    ]
+  }
+]
+```
+
+The snippet is a field in the preceding JSON object, not a standalone artifact.
+Version 1 remains valid for indexing but cannot create a bundle. Version 2
+requires 1–20 unique applications, 1–50 images per environment and at most
+100 images overall. Config revisions must be full commit IDs; image digests
+must be SHA-256. The CI pipeline must enumerate the intended image inventory;
+this project does not generate or deploy that pipeline or its manifest.
+
+After the successful build has been indexed, the trusted gateway calls:
+
+```text
+POST /release-bundles
+X-Bundle-Gateway-Secret: <gateway-secret>
+{"project":"team/chart","job_id":42,"actor":"immutable-manager-id"}
+```
+
+The response contains a draft fingerprint. A separately authorized gateway
+request explicitly approves that exact fingerprint:
+
+```text
+POST /release-bundles/<fingerprint>/approval
+X-Bundle-Gateway-Secret: <gateway-secret>
+{"actor":"immutable-reviewer-id","request_id":"unique-approval-request-id"}
+```
+
+Creation and approval are separate operations; they do not enforce a two-person
+rule. Approval rechecks the job, retained artifact hash, GitLab project IDs and
+commits, and Harbor chart and image digests. The SHA-256 fingerprint covers the
+canonical snapshot including environment mappings and artifact metadata.
+Creation and approval are recorded in the audit ledger. Retrying approval with
+the same actor and request ID is idempotent; another approval or reuse of the
+request ID for a different bundle conflicts. A later scope change can make an
+existing bundle inaccessible. An approval does not trigger a deployment.
+
+Read and compare using `X-Query-Secret`:
+
+```text
+GET /release-bundles/<fingerprint>
+GET /release-bundles/<fingerprint>/drift/viseca-prod
+```
+
+Only approved bundles can be compared. The comparison reports `match`, `drift`,
+or `unknown` for chart version, Git configuration revision and digest-bearing
+Argo CD image summaries. Stale, unsynced, multi-source, tag-only, missing, or
+conflicting deployment history and other unverifiable evidence are not treated
+as compliant. Argo CD's summary
+is not an independent observation of live pod image IDs, and this implementation
+cannot observe a verified deployed chart digest: that field is always `unknown`,
+so overall status cannot be `match`. CI claims and independently existing
+artifacts do not prove that the declared images or configuration were actually
+packaged or deployed; approval is not a signed build attestation. Validate the
+contract against your systems before relying on it as a release safety gate.
+
+## Rollback merge requests
+
+This feature is off by default and has not been deployed or validated against a
+real GitLab instance. It requires the bundle prerequisites above, migration
+`0005`, a separately provisioned identity-verifying gateway, and a distinct
+`GITOPS_ROLLBACK_GATEWAY_SECRET`. The gateway must authenticate the user,
+enforce authorization, supply the actor itself rather than trusting client input,
+and protect the secret. All actors must appear in `GITOPS_TEAMS_APPROVERS`.
+Anyone holding the gateway secret can impersonate an allowlisted actor. The
+requester may also approve; there is no two-person rule.
+
+Configure explicit per-application targets, for example:
+
+```json
+{"viseca-prod":{"branch":"main","files":["env/values.yaml","Chart.yaml"]}}
+```
+
+Set that JSON as `GITOPS_ROLLBACK_TARGETS`, and set `GITOPS_ROLLBACK_ENABLED=true`.
+The target project and baseline commit come from the selected approved bundle.
+An application can restore only its own bundle configuration project; there
+is no automatic search for a prior master baseline. The operator must select
+and verify the desired prior bundle. Each target has at most 20 unique literal
+paths; files must exist at both commits, be UTF-8 text and fit the existing
+64 KiB repository-file limit. Only files whose content differs are included.
+Restoring an entire file may revert unrelated changes or security fixes: choose
+the allowlist carefully and review every resulting diff.
+
+The trusted gateway calls the following endpoints with
+`X-Rollback-Gateway-Secret`. These examples show request bodies, not credentials:
+
+```text
+POST /rollbacks
+{"bundle_fingerprint":"<approved-bundle-fingerprint>","application":"viseca-prod","actor":"manager-id","request_id":"unique-request-id"}
+
+GET /rollbacks/<plan-id>?actor=manager-id
+GET /rollbacks/<plan-id>/preview?actor=manager-id
+
+POST /rollbacks/<plan-id>/approval
+{"actor":"manager-id","fingerprint":"<rollback-plan-fingerprint>"}
+
+POST /rollbacks/<plan-id>/execute
+{"actor":"manager-id"}
+```
+
+The draft plan records the target project ID, branch head, bundle, baseline
+commit, paths and before/after content hashes. Preview returns the actual
+textual diffs; protect gateway access, transport and logs, because file
+contents may be sensitive. Approval binds to the displayed plan fingerprint;
+approving the bundle alone does not approve a rollback. A repeated proposal
+request ID returns the same plan for the same actor and inputs. A repeated
+approval by the same actor is idempotent.
+
+Execution additionally requires `GITOPS_WRITE_ENABLED=true`, which also enables
+other existing GitLab write features such as MR comments. Use a least-privilege
+bot limited to the intended projects and `agent-rollback/*` branches. Before
+writing, the service revalidates the approved bundle, Harbor digests, GitLab
+project identity, target branch head and file hashes. It creates a new branch
+from the pinned target commit, updates only the approved files and opens a
+**draft** merge request; it never merges, runs a job or writes to Kubernetes.
+GitLab may independently run pipelines when a branch or MR is created, so
+ensure those pipelines cannot deploy without their own controls.
+
+GitLab and the database cannot share an atomic transaction. Execution is claimed
+once before the first write. A timeout or crash can leave `uncertain` or
+`executing` status even when a branch, commit or MR was created; the service
+does not retry these states. An operator must inspect GitLab and the audit
+ledger before deciding what to do. A completed execution can be read again
+without another write. Failed checks before the claim do not write; create and
+approve a fresh plan when the target changes.
+
+The target can still advance after the last check or after MR creation. Enforce
+protected target branches and GitLab-side merge checks that revalidate the
+target revision, source branch, complete diff, approvals and pipelines at merge
+time; block automatic merges and invalidate stale approvals. A draft MR alone
+is not a security boundary. Bundle evidence does not establish that the restored
+file contents actually deploy its chart or images, nor that the baseline is
+healthy or appropriate. Perform environment-specific human review and testing.
+
 ## Event contracts
 
 `POST /webhooks/gitlab` expects `X-Gitlab-Token`, `X-Gitlab-Event` and
@@ -154,7 +552,7 @@ Routing and rollout YAML are illustrative; adapt both and rebuild the image.
 Supported event names are `Merge Request Hook`, `Tag Push Hook` and `Job Hook`.
 An MR event uses `project.id`, `object_attributes.iid` and `target_branch`.
 A release tag event uses `project_id`, `checkout_sha` and
-`ref=refs/tags/REL/<version>`. A successful job event uses `project_id`,
+`ref=refs/tags/REL/<version>` or `ref=refs/tags/HOT/<version>`. A successful job event uses `project_id`,
 `build_id`, `build_name` and `build_status`. An example MR and CSV are in
 `tests/fixtures`. GitLab must retain the CSV as a job artifact.
 
@@ -202,8 +600,8 @@ does not enable automatic CSI rotation.
 
 The first successful snapshot becomes the baseline and does **not** enqueue
 existing MRs or tags. Later snapshots enqueue new or changed MRs and new,
-recreated or changed `REL/*` tags. The worker fetches the current MR diff and
-applies the same advisory routing rules; tag events record a release, not a
+recreated or changed `REL/*` and `HOT/*` tags. The worker fetches the current MR diff and
+applies the same advisory routing rules; tag events record a tag or release, not a
 deployment. GitLab writes remain disabled unless separately enabled. Snapshot
 updates and inbox inserts commit together, and a PostgreSQL advisory lock
 prevents concurrent pollers for the same project. Failures are logged and do
@@ -212,8 +610,9 @@ change at the configured path also stops baseline advancement.
 
 Polling is not an event log: changes that occur and disappear between
 snapshots can be missed, and multiple changes may collapse into one observation.
-Job events and deployment CSV reconciliation are **not** polled. Each poll
-reads the entire project MR and matching tag lists, with at least three API
+Configured build and deployment jobs can be polled separately as described
+above; other jobs remain unobserved. Each MR/tag poll
+reads the entire project MR and matching tag lists, with at least four API
 requests and additional requests for every non-empty page. The five-second
 staging interval can impose substantial load or hit rate limits; coordinate
 with the GitLab administrator and monitor errors. A malformed release tag or

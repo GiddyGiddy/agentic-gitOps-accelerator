@@ -17,7 +17,7 @@ class HarborClient:
     def artifact(self, project: str, repository: str, reference: str) -> dict:
         response = self.client.get(
             f"projects/{quote(project, safe='')}/repositories/"
-            f"{quote(repository, safe='')}/artifacts/{quote(reference, safe='')}"
+            f"{quote(quote(repository, safe=''), safe='')}/artifacts/{quote(reference, safe='')}"
         )
         response.raise_for_status()
         return response.json()

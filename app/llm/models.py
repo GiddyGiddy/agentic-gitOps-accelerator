@@ -43,4 +43,4 @@ class AdvisoryOutput(BaseModel):
 
 class QueryIntentOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    intent: Literal["deployed_version", "branch_comparison", "unsupported"]
+    intent: Literal["deployed_version", "branch_comparison", "jira_fix", "release_origin", "unsupported"]

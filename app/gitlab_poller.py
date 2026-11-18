@@ -14,6 +14,7 @@ from app.storage.db import create_database
 from app.storage.inbox import workflow_thread
 from app.storage.models import GitLabPollState, InboxEvent, utcnow
 from app.tools.gitlab_client import GitLabClient
+from app.traceability import build_job_names, deploy_job_names, validate_traceability_settings
 from config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -39,10 +40,10 @@ def _snapshot(client: GitLabClient, project: str) -> tuple[int, dict[str, dict]]
         if key in observations:
             raise ValueError("GitLab returned a merge request on multiple pages")
         observations[key] = {"updated_at": _timestamp(mr.get("updated_at")), "target_branch": target}
-    for tag in client.release_tags(project):
+    for tag in client.release_tags(project) + client.hotfix_tags(project):
         name, commit = tag.get("name"), tag.get("commit")
-        if not isinstance(name, str) or not name.startswith("REL/") or not isinstance(commit, dict):
-            raise ValueError("GitLab returned an invalid release tag")
+        if not isinstance(name, str) or not name.startswith(("REL/", "HOT/")) or not isinstance(commit, dict):
+            raise ValueError("GitLab returned an invalid release or hotfix tag")
         sha = commit.get("id")
         if not isinstance(sha, str) or not sha:
             raise ValueError("GitLab returned a release tag without a commit SHA")
@@ -114,6 +115,70 @@ def poll_once(factory: sessionmaker[Session], settings: Settings, client: GitLab
         return count
 
 
+def poll_build_jobs_once(factory: sessionmaker[Session], settings: Settings, client: GitLabClient) -> int | None:
+    validate_traceability_settings(settings)
+    names = build_job_names(settings)
+    deploy_names = deploy_job_names(settings)
+    source = (
+        f"gitlab-build-jobs\n{settings.gitlab_url.rstrip('/')}\n{settings.gitlab_poll_project}\n"
+        + "\n".join(sorted(names)) + "\ndeploy\n" + "\n".join(sorted(deploy_names))
+    )
+    source_key = hashlib.sha256(source.encode()).hexdigest()
+    with factory.begin() as session:
+        if session.get_bind().dialect.name == "postgresql":
+            acquired = session.scalar(
+                text("SELECT pg_try_advisory_xact_lock(hashtextextended(:source, 0))"),
+                {"source": f"gitlab-poll:{source_key}"},
+            )
+            if not acquired:
+                return None
+        state = session.get(GitLabPollState, source_key)
+        project_id = client.project_id(settings.gitlab_poll_project)
+        jobs = client.recent_successful_jobs(settings.gitlab_poll_project)
+        if len(jobs) >= 100:
+            logger.warning("GitLab build job window is full; older successful jobs may require backfill")
+        observations: dict[str, dict] = {}
+        for job in jobs:
+            if job.get("name") not in names | deploy_names:
+                continue
+            job_id = job.get("id")
+            if type(job_id) is not int or job_id <= 0 or job.get("status") != "success":
+                raise ValueError("GitLab returned an invalid successful build job")
+            key = f"job:{job_id}"
+            if key in observations:
+                raise ValueError("GitLab returned a duplicate build job")
+            observations[key] = {"id": job_id, "name": job["name"]}
+        if state is None:
+            session.add(GitLabPollState(source_key=source_key, project_id=project_id,
+                                        generation=0, observations=observations))
+            return 0
+        if state.project_id != project_id:
+            raise ValueError("GitLab project ID changed for the configured project path")
+        count = 0
+        for key, observation in observations.items():
+            if key in state.observations:
+                continue
+            if observation["name"] in names:
+                kind = "build"
+                payload = {"project_id": project_id, "job_id": observation["id"]}
+            else:
+                kind = "job"
+                payload = {"project_id": project_id, "build_id": observation["id"],
+                           "build_name": observation["name"], "build_status": "success"}
+            identity = json.dumps([source_key, state.generation, key], sort_keys=True)
+            delivery_id = "poll-" + hashlib.sha256(identity.encode()).hexdigest()
+            session.add(InboxEvent(
+                source="gitlab_build_poll", delivery_id=delivery_id,
+                thread_id=workflow_thread(kind, payload, "gitlab_build_poll", delivery_id),
+                kind=kind, payload=payload,
+            ))
+            count += 1
+        state.observations = observations
+        state.generation += 1
+        state.updated_at = utcnow()
+        return count
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = get_settings()
@@ -128,6 +193,9 @@ def main() -> None:
     try:
         client = GitLabClient(settings.gitlab_url, settings.gitlab_token)
         try:
+            next_build_poll = 0.0
+            if settings.gitlab_build_poll_enabled and not settings.traceability_enabled:
+                logger.warning("Build polling is configured but inactive until traceability is enabled")
             while True:
                 started = time.monotonic()
                 try:
@@ -136,6 +204,17 @@ def main() -> None:
                         logger.info("Enqueued %d GitLab polling observations", count)
                 except (httpx.HTTPError, SQLAlchemyError, ValueError, RuntimeError):
                     logger.exception("GitLab polling failed; the baseline was not advanced")
+                if (
+                    settings.gitlab_build_poll_enabled and settings.traceability_enabled
+                    and started >= next_build_poll
+                ):
+                    next_build_poll = started + settings.gitlab_build_poll_seconds
+                    try:
+                        count = poll_build_jobs_once(factory, settings, client)
+                        if count:
+                            logger.info("Enqueued %d GitLab build observations", count)
+                    except (httpx.HTTPError, SQLAlchemyError, ValueError, RuntimeError):
+                        logger.exception("GitLab build polling failed; its baseline was not advanced")
                 time.sleep(max(0, settings.gitlab_poll_seconds - (time.monotonic() - started)))
         finally:
             client.close()

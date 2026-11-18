@@ -71,6 +71,58 @@ class GitLabClient:
             {"search": "^REL/", "order_by": "name", "sort": "asc"},
         )
 
+    def hotfix_tags(self, project: int | str) -> list[dict]:
+        return self._pages(
+            f"projects/{self._project(project)}/repository/tags",
+            {"search": "^HOT/", "order_by": "name", "sort": "asc"},
+        )
+
+    def recent_successful_jobs(self, project: int | str) -> list[dict]:
+        response = self.client.get(
+            f"projects/{self._project(project)}/jobs",
+            params={"scope[]": "success", "per_page": 100, "page": 1, "include_retried": "true"},
+        )
+        response.raise_for_status()
+        jobs = response.json()
+        if not isinstance(jobs, list) or not all(isinstance(item, dict) for item in jobs):
+            raise ValueError("GitLab returned an invalid job list")
+        return jobs
+
+    def job(self, project: int | str, job_id: int) -> dict:
+        response = self.client.get(f"projects/{self._project(project)}/jobs/{job_id}")
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, dict):
+            raise ValueError("GitLab returned an invalid job")
+        return result
+
+    def commit(self, project: int | str, revision: str) -> dict:
+        response = self.client.get(f"projects/{self._project(project)}/repository/commits/{quote(revision, safe='')}")
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, dict):
+            raise ValueError("GitLab returned an invalid commit")
+        return result
+
+    def branch(self, project: int | str, name: str) -> dict:
+        response = self.client.get(f"projects/{self._project(project)}/repository/branches/{quote(name, safe='')}")
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, dict):
+            raise ValueError("GitLab returned an invalid branch")
+        return result
+
+    def merge_base(self, project: int | str, first: str, second: str) -> str:
+        response = self.client.get(
+            f"projects/{self._project(project)}/repository/merge_base",
+            params=[("refs[]", first), ("refs[]", second)],
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict) or not isinstance(data.get("id"), str):
+            raise ValueError("GitLab returned an invalid merge base")
+        return data["id"]
+
     def compare(self, project: int | str, from_ref: str, to_ref: str) -> dict:
         path = f"projects/{self._project(project)}/repository/compare"
         with self.client.stream("GET", path, params={"from": from_ref, "to": to_ref, "straight": "true"}) as response:
@@ -114,11 +166,21 @@ class GitLabClient:
         response.raise_for_status()
         return response.json()
 
-    def create_merge_request(self, project: int | str, source: str, target: str, title: str) -> dict:
+    def create_commit(self, project: int | str, branch: str, message: str, actions: list[dict]) -> dict:
+        require_write_enabled(self.write_enabled)
+        response = self.client.post(
+            f"projects/{self._project(project)}/repository/commits",
+            json={"branch": branch, "commit_message": message, "actions": actions},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def create_merge_request(self, project: int | str, source: str, target: str, title: str,
+                             *, description: str = "") -> dict:
         require_write_enabled(self.write_enabled)
         response = self.client.post(
             f"projects/{self._project(project)}/merge_requests",
-            json={"source_branch": source, "target_branch": target, "title": title},
+            json={"source_branch": source, "target_branch": target, "title": title, "description": description},
         )
         response.raise_for_status()
         return response.json()

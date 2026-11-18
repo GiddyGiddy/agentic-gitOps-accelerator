@@ -27,6 +27,9 @@ class FakeGitLab:
     def release_tags(self, project):
         return self.tags
 
+    def hotfix_tags(self, project):
+        return []
+
 
 def test_mounted_token_takes_precedence_and_missing_file_fails(tmp_path, monkeypatch):
     token_file = tmp_path / "token"

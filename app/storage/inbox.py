@@ -11,9 +11,18 @@ from app.storage.models import InboxEvent
 
 
 def workflow_thread(kind: str, payload: dict[str, Any], source: str, delivery_id: str) -> str:
+    if kind == "build":
+        project, job = int(payload["project_id"]), int(payload["job_id"])
+        if project <= 0 or job <= 0:
+            raise ValueError("Invalid build project ID or job ID")
+        digest = hashlib.sha256(f"{project}:{job}".encode()).hexdigest()
+        return f"build:{digest}"
     if kind == "tag":
         project = int(payload["project_id"])
-        version = payload["ref"].removeprefix("refs/tags/REL/")
+        ref = payload["ref"]
+        if not isinstance(ref, str) or not ref.startswith(("refs/tags/REL/", "refs/tags/HOT/")):
+            raise ValueError("Invalid release or hotfix tag")
+        version = ref.split("/", 3)[-1]
     elif kind == "approval":
         project = int(payload["project_id"])
         version = payload["release"]

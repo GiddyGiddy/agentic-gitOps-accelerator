@@ -12,6 +12,8 @@ env:
   GITOPS_GITLAB_URL: "https://gitlab.cgi-berlin.cloud"
   GITOPS_GITLAB_POLL_PROJECT: "Gideon/agentic-project-timesheet-assistance"
   GITOPS_GITLAB_POLL_SECONDS: "5"
+  GITOPS_GITLAB_BUILD_POLL_ENABLED: "true"
+  GITOPS_GITLAB_BUILD_POLL_SECONDS: "60"
   GITOPS_GITLAB_WEBHOOK_ENABLED: "false"
   GITOPS_WRITE_ENABLED: "false"
   GITOPS_LLM_AZURE_AUTH: "workload_identity"

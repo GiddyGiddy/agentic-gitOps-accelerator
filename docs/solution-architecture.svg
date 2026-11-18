@@ -1,0 +1,241 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1740" height="1160" viewBox="0 0 1740 1160" role="img" aria-labelledby="title description">
+  <title id="title">GitOps agent control plane - solution architecture</title>
+  <desc id="description">An Azure Kubernetes Service control plane with an API, event worker, optional GitLab poller and MCP, PostgreSQL, and external GitLab, Argo CD and Harbor integrations. The gateway, webhook route, CI integration and deployment of new features require separate configuration.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#466a8a"/>
+    </marker>
+    <marker id="arrowOptional" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#b27c26"/>
+    </marker>
+    <symbol id="person" viewBox="0 0 48 48">
+      <circle cx="24" cy="15" r="8" fill="#d9edfb" stroke="#1769a8" stroke-width="2"/>
+      <path d="M8 41c1-10 7-16 16-16s15 6 16 16z" fill="#d9edfb" stroke="#1769a8" stroke-width="2"/>
+    </symbol>
+    <symbol id="service" viewBox="0 0 48 48">
+      <rect x="5" y="7" width="38" height="34" rx="5" fill="#e0f0fb" stroke="#1769a8" stroke-width="2"/>
+      <path d="M5 17h38M12 12h2m4 0h2m4 0h2M13 25l-4 4 4 4m22-8 4 4-4 4M27 23l-5 12" fill="none" stroke="#1769a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="database" viewBox="0 0 48 48">
+      <path d="M7 11v26c0 4 7.6 7 17 7s17-3 17-7V11" fill="#d9edfb" stroke="#1769a8" stroke-width="2"/>
+      <ellipse cx="24" cy="11" rx="17" ry="7" fill="#edf8ff" stroke="#1769a8" stroke-width="2"/>
+      <path d="M7 24c0 4 7.6 7 17 7s17-3 17-7M7 31c0 4 7.6 7 17 7s17-3 17-7" fill="none" stroke="#1769a8" stroke-width="2"/>
+    </symbol>
+    <symbol id="registry" viewBox="0 0 48 48">
+      <path d="M5 15 24 6l19 9-19 9zM5 15v20l19 9 19-9V15M24 24v20" fill="#e0f0fb" stroke="#1769a8" stroke-width="2" stroke-linejoin="round"/>
+      <path d="m15 10 19 9M15 30l-5-2" fill="none" stroke="#1769a8" stroke-width="2"/>
+    </symbol>
+    <symbol id="shield" viewBox="0 0 48 48">
+      <path d="M24 4 40 10v12c0 11-7 18-16 22C15 40 8 33 8 22V10z" fill="#fff3df" stroke="#a06c18" stroke-width="2"/>
+      <rect x="17" y="21" width="14" height="11" rx="2" fill="none" stroke="#a06c18" stroke-width="2"/>
+      <path d="M20 21v-3a4 4 0 0 1 8 0v3" fill="none" stroke="#a06c18" stroke-width="2"/>
+    </symbol>
+    <symbol id="cluster" viewBox="0 0 48 48">
+      <path d="M24 4 41 14v20L24 44 7 34V14z" fill="#e0f0fb" stroke="#1769a8" stroke-width="2"/>
+      <circle cx="24" cy="24" r="5" fill="#fff" stroke="#1769a8" stroke-width="2"/>
+      <path d="M24 9v9m0 12v9M11 17l8 5m10 4 8 5m0-14-8 5m-10 4-8 5" fill="none" stroke="#1769a8" stroke-width="2"/>
+    </symbol>
+    <symbol id="model" viewBox="0 0 48 48">
+      <circle cx="24" cy="24" r="18" fill="#e6f4f3" stroke="#168378" stroke-width="2"/>
+      <circle cx="16" cy="18" r="3" fill="#168378"/><circle cx="31" cy="15" r="3" fill="#168378"/>
+      <circle cx="33" cy="30" r="3" fill="#168378"/><circle cx="18" cy="33" r="3" fill="#168378"/>
+      <path d="m18 19 10-3m4 2 1 9m-3 5-9 1m-4-3-1-9m4 0 10 8" stroke="#168378" stroke-width="2"/>
+    </symbol>
+    <style>
+      .title { font: 700 31px 'Segoe UI', Arial, sans-serif; fill: #102c47; }
+      .subtitle { font: 16px 'Segoe UI', Arial, sans-serif; fill: #486277; }
+      .section { font: 700 18px 'Segoe UI', Arial, sans-serif; fill: #164b78; }
+      .sectionAlt { font: 700 18px 'Segoe UI', Arial, sans-serif; fill: #6b521e; }
+      .label { font: 700 17px 'Segoe UI', Arial, sans-serif; fill: #153a59; }
+      .small { font: 14px 'Segoe UI', Arial, sans-serif; fill: #415e73; }
+      .tiny { font: 12px 'Segoe UI', Arial, sans-serif; fill: #536e80; }
+      .badge { font: 700 11px 'Segoe UI', Arial, sans-serif; fill: #986016; letter-spacing: .4px; }
+      .line { fill: none; stroke: #466a8a; stroke-width: 2; marker-end: url(#arrow); }
+      .optionalLine { fill: none; stroke: #b27c26; stroke-width: 2; stroke-dasharray: 6 5; marker-end: url(#arrowOptional); }
+      .boundary { fill: #f3f8fd; stroke: #88b8dc; stroke-width: 2; }
+      .card { fill: #fff; stroke: #a9c5d9; stroke-width: 1.5; }
+      .optionalCard { fill: #fffdf7; stroke: #c9a469; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .external { fill: #f8fafc; stroke: #bdcbd6; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="1740" height="1160" fill="#fff"/>
+  <text x="40" y="48" class="title">GitOps Agent Control Plane</text>
+  <text x="40" y="76" class="subtitle">Solution architecture - current implementation and separately configured integrations</text>
+  <path d="M40 95H1700" stroke="#d8e6f0" stroke-width="2"/>
+
+  <rect x="30" y="120" width="280" height="765" rx="14" fill="#f8fafc" stroke="#d6e0e8"/>
+  <text x="50" y="152" class="section">People and delivery</text>
+  <rect x="50" y="180" width="240" height="102" rx="10" class="card"/>
+  <use href="#person" x="65" y="200" width="43" height="43"/>
+  <text x="120" y="211" class="label">Release operator</text>
+  <text x="120" y="234" class="small">Queries and review</text>
+  <text x="120" y="255" class="small">Explicit approval</text>
+
+  <rect x="50" y="332" width="240" height="125" rx="10" class="optionalCard"/>
+  <use href="#shield" x="65" y="352" width="43" height="43"/>
+  <text x="120" y="364" class="label">Identity gateway</text>
+  <text x="120" y="386" class="small">Trusted user identity</text>
+  <text x="120" y="406" class="small">Separate shared secrets</text>
+  <text x="120" y="432" class="badge">NOT IMPLEMENTED</text>
+
+  <rect x="50" y="573" width="240" height="126" rx="10" class="optionalCard"/>
+  <use href="#service" x="65" y="593" width="43" height="43"/>
+  <text x="120" y="605" class="label">Preflight agent</text>
+  <text x="120" y="627" class="small">Helm render per tenant</text>
+  <text x="120" y="648" class="small">ConfigMap key checks</text>
+  <text x="120" y="674" class="badge">MANUAL CI INTEGRATION</text>
+  <text x="52" y="756" class="small">Webhook ingress needs a</text>
+  <text x="52" y="778" class="small">private HTTPS route. Staging</text>
+  <text x="52" y="800" class="small">uses polling, not webhooks.</text>
+  <path d="M170 282V322" class="optionalLine"/>
+  <path d="M290 393H323V253H360" class="optionalLine"/>
+  <path d="M290 229H360" class="line"/>
+
+  <rect x="340" y="120" width="1010" height="765" rx="14" class="boundary"/>
+  <use href="#cluster" x="360" y="136" width="42" height="42"/>
+  <text x="414" y="157" class="section">Azure Kubernetes Service - agent control plane</text>
+  <text x="414" y="178" class="tiny">Helm deployments - no direct Kubernetes API permissions</text>
+
+  <rect x="370" y="207" width="280" height="92" rx="10" class="card"/>
+  <use href="#service" x="385" y="226" width="42" height="42"/>
+  <text x="439" y="237" class="label">FastAPI service</text>
+  <text x="439" y="258" class="small">Webhooks and API routes</text>
+  <text x="439" y="278" class="small">Authentication and policy</text>
+
+  <rect x="700" y="207" width="280" height="92" rx="10" class="card"/>
+  <use href="#service" x="715" y="226" width="42" height="42"/>
+  <text x="769" y="237" class="label">Event worker</text>
+  <text x="769" y="258" class="small">Inbox processing</text>
+  <text x="769" y="278" class="small">LangGraph checkpoints</text>
+
+  <rect x="1030" y="207" width="280" height="92" rx="10" class="optionalCard"/>
+  <use href="#service" x="1045" y="226" width="42" height="42"/>
+  <text x="1099" y="237" class="label">GitLab poller</text>
+  <text x="1099" y="258" class="small">MRs, tags and job snapshots</text>
+  <text x="1099" y="278" class="badge">OPTIONAL</text>
+
+  <rect x="370" y="340" width="280" height="92" rx="10" class="optionalCard"/>
+  <use href="#model" x="385" y="359" width="42" height="42"/>
+  <text x="439" y="369" class="label">Query agent</text>
+  <text x="439" y="390" class="small">Version, diffs and traceability</text>
+  <text x="439" y="410" class="badge">OPT-IN - LOCAL CODE</text>
+
+  <rect x="370" y="485" width="280" height="106" rx="10" class="optionalCard"/>
+  <use href="#shield" x="385" y="508" width="42" height="42"/>
+  <text x="439" y="513" class="label">Bundles and rollback</text>
+  <text x="439" y="535" class="small">Bundle approval and drift</text>
+  <text x="439" y="556" class="small">Approved draft rollback MR</text>
+  <text x="439" y="577" class="badge">OPT-IN - LOCAL CODE</text>
+
+  <rect x="700" y="340" width="280" height="92" rx="10" class="card"/>
+  <use href="#service" x="715" y="359" width="42" height="42"/>
+  <text x="769" y="369" class="label">Routing agent</text>
+  <text x="769" y="390" class="small">Checks MR routing rules</text>
+  <text x="769" y="411" class="small">Advisories when enabled</text>
+
+  <rect x="700" y="485" width="280" height="106" rx="10" class="card"/>
+  <use href="#service" x="715" y="508" width="42" height="42"/>
+  <text x="769" y="514" class="label">Reconciliation agent</text>
+  <text x="769" y="535" class="small">CSV and Argo CD comparison</text>
+  <text x="769" y="556" class="small">Application health summary</text>
+  <text x="769" y="577" class="tiny">Triggered by the event worker</text>
+
+  <rect x="1030" y="340" width="280" height="92" rx="10" class="optionalCard"/>
+  <use href="#service" x="1045" y="359" width="42" height="42"/>
+  <text x="1099" y="369" class="label">MCP read servers</text>
+  <text x="1099" y="390" class="small">GitLab and Argo CD reads</text>
+  <text x="1099" y="410" class="badge">OPTIONAL</text>
+
+  <rect x="1030" y="485" width="280" height="80" rx="10" class="card"/>
+  <use href="#service" x="1045" y="504" width="42" height="42"/>
+  <text x="1099" y="514" class="label">Traceability index</text>
+  <text x="1099" y="535" class="small">CI provenance and Git history</text>
+  <text x="1099" y="553" class="badge">OPT-IN - LOCAL CODE</text>
+
+  <rect x="1030" y="590" width="280" height="88" rx="10" class="optionalCard"/>
+  <use href="#service" x="1045" y="609" width="42" height="42"/>
+  <text x="1099" y="619" class="label">Promotion agent</text>
+  <text x="1099" y="640" class="small">Wave policy helper only</text>
+  <text x="1099" y="659" class="badge">NOT WIRED TO WORKFLOW</text>
+
+  <rect x="540" y="690" width="560" height="105" rx="10" class="card"/>
+  <use href="#database" x="560" y="715" width="46" height="46"/>
+  <text x="620" y="722" class="label">PostgreSQL</text>
+  <text x="620" y="744" class="small">Inbox, audit ledger, checkpoints, traceability, bundles and rollback plans</text>
+  <text x="620" y="766" class="tiny">Staging uses an in-cluster, test-only PostgreSQL instance</text>
+
+  <path d="M510 299V329" class="line"/>
+  <path d="M650 254H674V538H661" class="line"/>
+  <path d="M840 299V329" class="line"/>
+  <path d="M980 254H1005V538H991" class="line"/>
+  <path d="M370 280H360V660H590V680" class="line"/>
+  <path d="M510 591V742H530" class="line"/>
+  <path d="M840 591V680" class="line"/>
+  <path d="M1310 254H1327V742H1110" class="line"/>
+  <path d="M980 386H1020" class="optionalLine"/>
+  <text x="1067" y="456" class="tiny">Optional worker read path</text>
+  <path d="M370 385H345V910H975V937" class="line"/>
+  <text x="515" y="903" class="tiny">Filtered query keywords to model; validated intent returned</text>
+
+  <rect x="1380" y="120" width="330" height="765" rx="14" fill="#f8fafc" stroke="#d6e0e8"/>
+  <text x="1400" y="152" class="section">External GitOps systems</text>
+  <rect x="1400" y="190" width="290" height="115" rx="10" class="external"/>
+  <use href="#registry" x="1416" y="211" width="44" height="44"/>
+  <text x="1470" y="220" class="label">GitLab</text>
+  <text x="1470" y="241" class="small">Repos, MRs, jobs and artifacts</text>
+  <text x="1470" y="262" class="small">Rollback writes require flags</text>
+  <text x="1470" y="283" class="tiny">Existing CI is not replaced</text>
+
+  <rect x="1400" y="349" width="290" height="105" rx="10" class="external"/>
+  <g id="official-harbor-icon"><a href="https://goharbor.io/"><image x="1416" y="370" width="44" height="44" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHJvbGU9ImltZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjEuMDUgLTEuOTUgMzU5LjQxIDM2MS42NiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJsaW5lYXItZ3JhZGllbnQiIHgxPSIyNjQuNzkiIHgyPSIyNjcuMjciIHkxPSI5NTIuMzkiIHkyPSI5NTIuMzkiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMzAuNDMgMCAwIC0zMC40MyAtNzk1NS4yMiAyOTI4NS43NSkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM2MGI5MzIiLz48c3RvcCBvZmZzZXQ9Ii4yOCIgc3RvcC1jb2xvcj0iIzYwYjkzMiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzM2N2MzNCIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJsaW5lYXItZ3JhZGllbnQtMiIgeDE9IjI2My43NyIgeDI9IjI2Ni4yNiIgeTE9Ijk1NS42NSIgeTI9Ijk1NS42NSIgZ3JhZGllbnRUcmFuc2Zvcm09Im1hdHJpeCgyNy4yMSAwIDAgLTI3LjIxIC03MDczLjg1IDI2MTY5LjQxKSIgeGxpbms6aHJlZj0iI2xpbmVhci1ncmFkaWVudCIvPjxsaW5lYXJHcmFkaWVudCBpZD0ibGluZWFyLWdyYWRpZW50LTMiIHgxPSIyNjMuMjgiIHgyPSIyNjUuNzYiIHkxPSI5NTMuNzQiIHkyPSI5NTMuNzQiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMjUuNzUgMCAwIC0yNS43NSAtNjY3MS4xMyAyNDgxMi4yMykiIHhsaW5rOmhyZWY9IiNsaW5lYXItZ3JhZGllbnQiLz48bGluZWFyR3JhZGllbnQgaWQ9ImxpbmVhci1ncmFkaWVudC00IiB4MT0iMjYzLjc3IiB4Mj0iMjY2LjI1IiB5MT0iOTUzLjIiIHkyPSI5NTMuMiIgZ3JhZGllbnRUcmFuc2Zvcm09Im1hdHJpeCgyNy4xIDAgMCAtMjcuMSAtNzA0MC45IDI2MTAyLjQ5KSIgeGxpbms6aHJlZj0iI2xpbmVhci1ncmFkaWVudCIvPjxsaW5lYXJHcmFkaWVudCBpZD0ibGluZWFyLWdyYWRpZW50LTUiIHgxPSIyNjIuNzMiIHgyPSIyNjUuMjEiIHkxPSI5NTQuMzQiIHkyPSI5NTQuMzQiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMjQuNCAwIDAgLTI0LjQgLTYzMDEuMzYgMjM1MjEuOTcpIiB4bGluazpocmVmPSIjbGluZWFyLWdyYWRpZW50Ii8+PGxpbmVhckdyYWRpZW50IGlkPSJsaW5lYXItZ3JhZGllbnQtNiIgeDE9IjI3Mi4xNCIgeDI9IjI3NC42MiIgeTE9Ijk1NS4xNSIgeTI9Ijk1NS4xNSIgZ3JhZGllbnRUcmFuc2Zvcm09InNjYWxlKDY2LjA5IC02Ni4wOSkgcm90YXRlKDM2LjUyIDE1ODguMTUzIDY4LjE0OCkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM0NTk2ZDgiLz48c3RvcCBvZmZzZXQ9Ii4yIiBzdG9wLWNvbG9yPSIjNDU5NmQ4Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZmZmIi8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9ImxpbmVhci1ncmFkaWVudC03IiB4MT0iMjcwLjY1IiB4Mj0iMjczLjEzIiB5MT0iOTUyLjM4IiB5Mj0iOTUyLjM4IiBncmFkaWVudFRyYW5zZm9ybT0ic2NhbGUoNzcuOCAtNzcuOCkgcm90YXRlKC0xMS41NCAtNDU4Ny4yMDkgMTgwMy4zMjMpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjNDE5NGQ3Ii8+PHN0b3Agb2Zmc2V0PSIuMiIgc3RvcC1jb2xvcj0iIzQxOTRkNyIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2ZmZiIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJsaW5lYXItZ3JhZGllbnQtOCIgeDE9IjI3MC45NyIgeDI9IjI3My40NSIgeTE9Ijk1My43NSIgeTI9Ijk1My43NSIgZ3JhZGllbnRUcmFuc2Zvcm09InNjYWxlKDcxLjM1IC03MS4zNSkgcm90YXRlKDEwLjIzIDU0NzcuMzcgLTEwMjQuNjAyKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzQxOTRkNyIvPjxzdG9wIG9mZnNldD0iLjMzIiBzdG9wLWNvbG9yPSIjNDQ5NmQ4Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZmZmIi8+PC9saW5lYXJHcmFkaWVudD48Y2xpcFBhdGggaWQ9ImNsaXAtcGF0aCI+PHBhdGggZD0iTTE3NC40IDMwMi41MmwtNjguNjUtMzAuMjYtMy44MyA0My4yMSA3NS41IDIzLjk4LTMuMDItMzYuOTN6IiBjbGFzcz0iY2xzLTEiLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iY2xpcC1wYXRoLTIiPjxwYXRoIGQ9Ik0xMTkuMTkgMTM1LjM4aDM4LjU1djMyLjg5aC05LjE1di0xNGExMC4xMyAxMC4xMyAwIDEgMC0yMC4yNiAwdjE0aC05LjE1em0tNy43IDcybDU3LjIgMjUuMjEtMy45NC00OC4yNGg3LjQ5di0xNi4wOGgtNS41NXYtMzIuODloNS41NXYtOS40NWwtMzAuODYtMzAuMTl2LTIuMTJhMi45MSAyLjkxIDAgMCAwLTUuODIgMHYyLjEybC0zMC44NiAzMC4xOXY5LjQ1aDUuNTZ2MzIuODloLTUuNTZ2MTYuMTJoOC44MnoiIGNsYXNzPSJjbHMtMSIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSJjbGlwLXBhdGgtMyI+PHBhdGggZD0iTTEwOC4xNCAyNDUuMjhsNjMuODggMjguMTYtLjk2LTExLjczLTYxLjk2LTI3LjMtLjk2IDEwLjg3eiIgY2xhc3M9ImNscy0xIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9ImNsaXAtcGF0aC00Ij48cGF0aCBkPSJNMTA2LjQ2IDI2NC4yMWw2Ny4yMyAyOS42My0uOTYtMTEuNzItNjUuMzEtMjguNzgtLjk2IDEwLjg3eiIgY2xhc3M9ImNscy0xIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9ImNsaXAtcGF0aC01Ij48cGF0aCBkPSJNMTEwLjc3IDIxNS40OGwtLjk2IDEwLjg3IDYwLjU0IDI2LjY4LS45NS0xMS43Mi01OC42My0yNS44M3oiIGNsYXNzPSJjbHMtMSIvPjwvY2xpcFBhdGg+PGNsaXBQYXRoIGlkPSJjbGlwLXBhdGgtNiI+PHBhdGggZD0iTTMxMy4xMyA2Ny41OWExNzUuMzEgMTc1LjMxIDAgMCAwLTI5Ljc1LTI4LjEzYy0xLjU3LTEuMTctMy4xOC0yLjMtNC43OS0zLjQyTDI1NiA1OS41bC04Mi4zNCA4NS42MyAxMTMuNDEtNTguNjggMjkuMDctMTVjLTEuMDEtMS4zMS0xLjk4LTIuNjItMy4wMS0zLjg2eiIgY2xhc3M9ImNscy0xIi8+PC9jbGlwUGF0aD48Y2xpcFBhdGggaWQ9ImNsaXAtcGF0aC03Ij48cGF0aCBkPSJNMzUzLjU5IDE3Ny42MWMwLTItLjE0LTQtLjIyLTUuOTNsLTMyLjIxLTIuMzEtMTQ3LjQ3LTEwLjU4TDMxOC4zNiAyMDlsMzAuNDEgMTAuNTVjLjA5LS4zNi4xOS0uNzEuMjgtMS4wOGExNzMuNjUgMTczLjY1IDAgMCAwIDQuNTctMzkuNDd2LTEuMzd6IiBjbGFzcz0iY2xzLTEiLz48L2NsaXBQYXRoPjxjbGlwUGF0aCBpZD0iY2xpcC1wYXRoLTgiPjxwYXRoIGQ9Ik0zNDguODQgMTM4LjYxYTE3Mi41NSAxNzIuNTUgMCAwIDAtMTMuODQtMzcuN2wtMzAuOTQgOS45NEwxNzUuOTIgMTUybDE0Mi00LjgzIDMyLjUtMS4xMWMtLjUtMi40OC0uOTktNC45OC0xLjU4LTcuNDV6IiBjbGFzcz0iY2xzLTEiLz48L2NsaXBQYXRoPjxzdHlsZT4uY2xzLTF7ZmlsbDpub25lfS5jbHMtMTN7ZmlsbDojNjk2NTY2fTwvc3R5bGU+PC9kZWZzPjxnIGlkPSJnMTIiPjxwYXRoIGlkPSJwYXRoMTQiIGZpbGw9IiNmZmYiIGQ9Ik0zMC44OSAxNzlhMTQ4Ljg3IDE0OC44NyAwIDEgMSAxNDguODcgMTQ4Ljg1QTE0OC44NyAxNDguODcgMCAwIDEgMzAuODkgMTc5Ii8+PGcgaWQ9ImczMCIgY2xpcC1wYXRoPSJ1cmwoI2NsaXAtcGF0aCkiPjxnIGlkPSJnMzIiPjxwYXRoIGlkPSJwYXRoNDYiIGZpbGw9InVybCgjbGluZWFyLWdyYWRpZW50KSIgZD0iTTE3NC40IDMwMi41MmwtNjguNjUtMzAuMjUtMy44MiA0My4yIDc1LjUgMjQtMy0zNi45MyIvPjwvZz48L2c+PGcgaWQ9Imc0OCIgY2xpcC1wYXRoPSJ1cmwoI2NsaXAtcGF0aC0yKSI+PGcgaWQ9Imc1MCI+PHBhdGggaWQ9InBhdGg2NCIgZmlsbD0idXJsKCNsaW5lYXItZ3JhZGllbnQtMikiIGQ9Ik0xMTkuMTkgMTM1LjM4aDM4LjU1djMyLjg5aC05LjE1di0xNGExMC4xMyAxMC4xMyAwIDEgMC0yMC4yNiAwdjE0aC05LjE1em0tNy43IDcybDU3LjIgMjUuMjEtMy45NC00OC4yNGg3LjQ5di0xNi4wOGgtNS41NXYtMzIuODloNS41NXYtOS40NWwtMzAuODYtMzAuMTl2LTIuMTJhMi45MSAyLjkxIDAgMCAwLTUuODIgMHYyLjEybC0zMC44NiAzMC4xOXY5LjQ1aDUuNTZ2MzIuODloLTUuNTZ2MTYuMTJoOC44MmwtMiAyMyIvPjwvZz48L2c+PGcgaWQ9Imc2NiIgY2xpcC1wYXRoPSJ1cmwoI2NsaXAtcGF0aC0zKSI+PGcgaWQ9Imc2OCI+PHBhdGggaWQ9InBhdGg4MiIgZmlsbD0idXJsKCNsaW5lYXItZ3JhZGllbnQtMykiIGQ9Ik0xMDguMTMgMjQ1LjI4TDE3MiAyNzMuNDRsLTEtMTEuNzItNjItMjcuMzEtMSAxMC44NyIvPjwvZz48L2c+PGcgaWQ9Imc4NCIgY2xpcC1wYXRoPSJ1cmwoI2NsaXAtcGF0aC00KSI+PGcgaWQ9Imc4NiI+PHBhdGggaWQ9InBhdGgxMDAiIGZpbGw9InVybCgjbGluZWFyLWdyYWRpZW50LTQpIiBkPSJNMTA2LjQ2IDI2NC4yMWw2Ny4yMyAyOS42My0xLTExLjcyLTY1LjMxLTI4Ljc4LTEgMTAuODciLz48L2c+PC9nPjxnIGlkPSJnMTAyIiBjbGlwLXBhdGg9InVybCgjY2xpcC1wYXRoLTUpIj48ZyBpZD0iZzEwNCI+PHBhdGggaWQ9InBhdGgxMTgiIGZpbGw9InVybCgjbGluZWFyLWdyYWRpZW50LTUpIiBkPSJNMTEwLjc3IDIxNS40OGwtMSAxMC44OEwxNzAuMzUgMjUzbC0xLTExLjcyLTU4LjYyLTI1LjgzIi8+PC9nPjwvZz48cGF0aCBpZD0icGF0aDEyMCIgZD0iTTMwNC4wNyAxMTAuODVsMzAuOTMtOS45NGMtLjExLS4yMi0uMjEtLjQ1LS4zMi0uNjZhMTc0LjQxIDE3NC40MSAwIDAgMC0xOC41NS0yOC44M2wtMjkuMDcgMTVhMTQyLjcxIDE0Mi43MSAwIDAgMSAxNi43MyAyMy44N2MuMS4xNy4xOC4zNS4yNy41MyIgY2xhc3M9ImNscy0xMyIvPjxwYXRoIGlkPSJwYXRoMTIyIiBkPSJNMzIxLjE1IDE2OS4zN2wzMi4yMSAyLjMxYTE3Mi44NiAxNzIuODYgMCAwIDAtMy0yNS41OWwtMzIuNSAxLjExYTE0MSAxNDEgMCAwIDEgMy4yNSAyMi4xNyIgY2xhc3M9ImNscy0xMyIvPjxwYXRoIGlkPSJwYXRoMTI0IiBkPSJNMTgyIDMyMC44MWMtNzguMiAwLTE0MS44My02My42Mi0xNDEuODMtMTQxLjgyUzEwMy44MiAzNy4xNiAxODIgMzcuMTZhMTQwLjkzIDE0MC45MyAwIDAgMSA3Ni4zIDIyLjM0TDI4MC44NSAzNkExNzIuODYgMTcyLjg2IDAgMCAwIDE4MiA1LjExQzg2LjE1IDUuMTEgOC4xNSA4My4xMSA4LjE1IDE3OXM3OCAxNzMuODUgMTczLjg1IDE3My44NWM4MS45IDAgMTUwLjY5LTU3IDE2OS0xMzMuMzJMMzIwLjYyIDIwOWMtMTMuOCA2My44NC03MC42OSAxMTEuODMtMTM4LjYgMTExLjgzIiBjbGFzcz0iY2xzLTEzIi8+PGcgaWQ9ImcxMjYiIGNsaXAtcGF0aD0idXJsKCNjbGlwLXBhdGgtNikiPjxnIGlkPSJnMTI4Ij48cGF0aCBpZD0icGF0aDE0MiIgZmlsbD0idXJsKCNsaW5lYXItZ3JhZGllbnQtNikiIGQ9Ik0zMTMuMTMgNjcuNTlhMTc1LjMxIDE3NS4zMSAwIDAgMC0yOS43NS0yOC4xM2MtMS41Ny0xLjE3LTMuMTgtMi4zLTQuNzktMy40MkwyNTYgNTkuNWwtODIuMzQgODUuNjMgMTEzLjQxLTU4LjY4IDI5LjA3LTE1Yy0xLTEuMjctMi0yLjU4LTMtMy44MiIvPjwvZz48L2c+PGcgaWQ9ImcxNDQiIGNsaXAtcGF0aD0idXJsKCNjbGlwLXBhdGgtNykiPjxnIGlkPSJnMTQ2Ij48cGF0aCBpZD0icGF0aDE2MCIgZmlsbD0idXJsKCNsaW5lYXItZ3JhZGllbnQtNykiIGQ9Ik0zNTMuNTkgMTc3LjYxYzAtMi0uMTQtNC0uMjItNS45M2wtMzIuMjEtMi4zMS0xNDcuNDctMTAuNThMMzE4LjM2IDIwOWwzMC40MSAxMC41NWMuMDktLjM2LjE5LS43MS4yOC0xLjA4YTE3My42NSAxNzMuNjUgMCAwIDAgNC41Ny0zOS40N3YtMS4zNyIvPjwvZz48L2c+PGcgaWQ9ImcxNjIiIGNsaXAtcGF0aD0idXJsKCNjbGlwLXBhdGgtOCkiPjxnIGlkPSJnMTY0Ij48cGF0aCBpZD0icGF0aDE3OCIgZmlsbD0idXJsKCNsaW5lYXItZ3JhZGllbnQtOCkiIGQ9Ik0zNDguODQgMTM4LjYxYTE3Mi41NSAxNzIuNTUgMCAwIDAtMTMuODQtMzcuN2wtMzAuOTQgOS45NEwxNzUuOTIgMTUybDE0Mi00LjgzIDMyLjUtMS4xMWMtLjQ4LTIuNTEtMS01LTEuNTYtNy40OCIvPjwvZz48L2c+PC9nPjwvc3ZnPg=="/></a></g>
+  <text x="1470" y="380" class="label">Harbor</text>
+  <text x="1470" y="402" class="small">Chart and image digests</text>
+  <text x="1470" y="425" class="badge">NOT YET VALIDATED</text>
+
+  <rect x="1400" y="506" width="290" height="105" rx="10" class="external"/>
+  <g id="official-argocd-icon"><a href="https://argo-cd.readthedocs.io/"><image x="1416" y="527" width="44" height="44" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiBmaWxsPSJub25lIiB2aWV3Qm94PSIwIDAgNTgxIDc0NyI+CiAgPHBhdGggaWQ9ImEiIGZpbGw9IiNmZmYiIGQ9Ik0zMzYuNzYgNDM3LjYxYzAgMjguMzEtMTguODMgNDMuMzYtNDkuMjkgNDMuMzYtMzAuNDUgMC00Ny4yLTE3Ljg0LTQ3LjItNDMuMzYgMCAwIDE2Ljc1IDIzLjY1IDQ3LjIgMjMuNjUgMzAuNDYgMCA0OS4zLTIzLjY1IDQ5LjMtMjMuNjVaIi8+CiAgPHBhdGggZmlsbD0iI0UyRjVGQyIgZD0iTTI5MC41IDU0Ny45OGMxNDguNDcgMCAyNjguODQtMTIwLjQ1IDI2OC44NC0yNjkuMDQgMC0xNDguNTgtMTIwLjM3LTI2OS4wMy0yNjguODQtMjY5LjAzLTE0OC40NyAwLTI2OC44NCAxMjAuNDUtMjY4Ljg0IDI2OS4wMyAwIDE0OC41OSAxMjAuMzcgMjY5LjA0IDI2OC44NCAyNjkuMDRaIi8+CiAgPHBhdGggZmlsbD0iI0NERUNGNiIgZD0iTTI5MC41IDUwNC4wNGMxMjEuMzYgMCAyMTkuNzQtOTguNDUgMjE5Ljc0LTIxOS45UzQxMS44NiA2NC4yNCAyOTAuNSA2NC4yNGMtMTIxLjM2IDAtMjE5Ljc0IDk4LjQ1LTIxOS43NCAyMTkuOXM5OC4zOCAyMTkuOSAyMTkuNzQgMjE5LjlaIi8+CiAgPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTIwOC4zMSA5MS41MWExMi45OCAxMi45OCAwIDEgMCAwLTI1Ljk2IDEyLjk4IDEyLjk4IDAgMCAwIDAgMjUuOTZabS05Ni41NyAzMjUuODJhNC41IDQuNSAwIDEgMCA3LjA4LTUuNTRjLTg3LjgtMTEyLjIxLTM3LjE1LTI1Ny42NSA2Mi41LTMxNC43NGE0LjUgNC41IDAgMCAwLTQuNDctNy44QzczLjIzIDE0OC42IDIwLjAzIDMwMC4xMiAxMTEuNzQgNDE3LjMzWiIvPgogIDxwYXRoIGZpbGw9IiNCNUQyRjMiIGQ9Ik0xOS4yNiAyMjUuNTRhMy41IDMuNSAwIDEgMC03IDBoN1ptLTcgMTA1LjM4YTMuNSAzLjUgMCAxIDAgNyAwaC03Wm01NTUuMDctMTA1Ljg4YTMuNSAzLjUgMCAxIDAtNyAwaDdabS03IDEwNS4zOGEzLjUgMy41IDAgMSAwIDcgMGgtN1pNMjg5Ljc5IDU1NS45N2MxNTMuMjggMCAyNzcuNTQtMTI0LjM1IDI3Ny41NC0yNzcuNzNoLTdjMCAxNDkuNTItMTIxLjEzIDI3MC43My0yNzAuNTQgMjcwLjczdjdabTI3Ny41NC0yNzcuNzNDNTY3LjMzIDEyNC44NCA0NDMuMDcuNSAyODkuNzkuNXY3YzE0OS40MSAwIDI3MC41NCAxMjEuMjEgMjcwLjU0IDI3MC43NGg3Wk0yODkuNzkuNUMxMzYuNTEuNSAxMi4yNiAxMjQuODUgMTIuMjYgMjc4LjI0aDdDMTkuMjYgMTI4LjcgMTQwLjM4IDcuNSAyODkuNzkgNy41di03Wk0xMi4yNiAyNzguMjRjMCAxNTMuMzggMTI0LjI1IDI3Ny43MyAyNzcuNTMgMjc3Ljczdi03Yy0xNDkuNCAwLTI3MC41My0xMjEuMi0yNzAuNTMtMjcwLjczaC03Wm0wLTUyLjd2MTA1LjM4aDdWMjI1LjU0aC03Wm01NDguMDctLjV2MTA1LjM4aDdWMjI1LjA0aC03WiIvPgogIDxwYXRoIGZpbGw9IiNCNUQyRjMiIGQ9Ik0yMS42NiAyMjUuNzNhMTAuODQgMTAuODQgMCAxIDAtMjEuNjYgMHYxMDYuNDNhMTAuODQgMTAuODQgMCAxIDAgMjEuNjYgMFYyMjUuNzNabTU1OS4zNCAwYTEwLjg0IDEwLjg0IDAgMSAwLTIxLjY2IDB2MTA2LjQzYTEwLjg0IDEwLjg0IDAgMSAwIDIxLjY2IDBWMjI1LjczWiIvPgogIDxwYXRoIGZpbGw9IiNGRTczM0UiIGQ9Ik0xNzEuMTcgNjg3Ljc2YzEyLjUzLTUuMSA5Ljk4LTEwLjIgOS45OC0xMi43NGwtNi4xLTkyLjU1LTUuMzctNDYuMy04LjEyLTI4OS4wN2MwLTY4LjYgNTAuNzMtMTMyLjcyIDEyNy4zLTEzMi43MnMxMzAuNzYgNjEuNzEgMTMwLjg4IDEzMi43N2MtMi4yIDEzNy4yNC01LjkgMTg5LjQ3LTExLjA3IDI4OC4wMi0uNjMgMTMuNDctMi4zOCAzMy44Ni0yLjk2IDQ2LjMyLTIuODggNjEuNjYtNi4xNCA5MS44Ny02LjE0IDkzLjUzIDAgMi41NS0yLjU0IDcuNjQgOS45OCAxMi43NCAxMi41MiA1LjEgNDEuNDYgMTEuNzEgNDEuNDYgMTMuMzMgMCAxLjYtNDguODkgMC00OC44OSAwLTI4LjAyIDAtMjguMDItMjAuOTgtMjguMDItMjYuMDcgMC01LjEtNy42NC05Mi42LTcuNjQtOTIuNmwtMi41NSAxMTIuOTljMCA1LjEgMi41NSAxMi43NCAyMC4zOCAxNy44NCAwIDAgMzguOTEgNS44OSAzOC45MSA4LjAxIDAgMi4xMy00Ni41NSAwLTQ2LjU1IDAtMzUuNDUgMC0zNS40NS0yMC43NS0zNS40NS0yMC43NWwtNy42NC05Mi42UzMzMSA3MDAuNSAzMzEgNzEzLjI0YzAgOS45OSAxLjczIDE3LjYzIDI5LjU0IDIyLjczIDEzLjQzIDMuNzMgNDAuNTQgOC4zNSA0MC41NCAxMC4yIDAgMS44NS02MS44NiAwLTYxLjg2IDAtMzMuMTEtMi41NS0zNi4yNC0yNS41LTM2LjI0LTI1LjVsLTEyLjU1LTQ2LjE0LTEyLjUgNDYuMTVzLTUuMDkgMjIuOTQtMzguMiAyNS40OWMwIDAtNTYuMTcgMS44NS01Ni4xNyAwczIyLjUtNS45OSAzNi44MS0xMC4yYzE5LjM2LTUuNjkgMjkuNTUtMTIuNzQgMjkuNTUtMjIuNzMgMC0xMi43NC0yLjU1LTEwNS4zNS0yLjU1LTEwNS4zNWwtNy42NCA5Mi42czAgMjIuNzQtMzUuNDUgMjIuNzRjMCAwLTUwLjUuMTUtNTAuNS0xLjk4IDAtMi4xMiA0Mi42NC04IDQyLjY0LTggMTcuODMtNS4xIDIwLjM4LTEyLjc1IDIwLjM4LTE3Ljg1bC0yLjU1LTExM3MtNy42NCA4Ny41LTcuNjQgOTIuNmMwIDUuMSAwIDI4LjA1LTI4LjAyIDI4LjA1IDAgMC00Ny4xMy0yLjMzLTQ3LjEzLTMuOTUgMC0xLjYgMjcuMTgtNi4yNSAzOS43LTExLjM1WiIvPgogIDxwYXRoIGZpbGw9IiNGRTY0NDYiIGQ9Ik0xNjkuNjggNTM2LjE2cy01LjIzIDEyLjgtMTcuMDUgMTkuN2MtMTEuODEgNi45LTI1LjUxIDkuMTQtMzguNCAxMC44NCAwIDAgMTcuNzIgOC44NyAzOS4zOSA2LjkgMTMuNTgtMS4xIDE5LjI4IDIuMzYgMjEuNDIgOC44N2wtNS4zNi00Ni4zWm0yMzguOTktLjk5czcuNjMgMTIuOCAxOS40NSAxOS43YzExLjgyIDYuOSAyNS41MSA5LjE1IDM4LjQgMTAuODUgMCAwLTE3LjcyIDguODctMzkuMzggNi45LTEzLjU4LTEuMS0xOS4yOSAyLjM1LTIxLjQzIDguODdsMi45Ni00Ni4zMloiLz4KICA8cGF0aCBmaWxsPSIjRkU2NDQ2IiBkPSJtNDA4LjgxIDUzMyAuOTktMTYuMDJjLTYyLjU2IDI5LjU0LTEyMC43IDI2LjQzLTEyMC43IDI2LjQzcy01OC40OSAyLjQ1LTExOS45Mi0yNi41N2wuNCAxNS41N3M0My44MiAyNi45NCAxMTkuNTIgMjYuOTRjNzUuNyAwIDExOS43MS0yNi4zNSAxMTkuNzEtMjYuMzVaIiBvcGFjaXR5PSIuMyIvPgogIDxwYXRoIGZpbGw9IiNGRUE3NzciIGQ9Ik0yMzguNzggMTk0LjI1YTE3Ljg0IDE3Ljg0IDAgMSAwLS4wMS0zNS42NyAxNy44NCAxNy44NCAwIDAgMCAuMDEgMzUuNjdaIiBvcGFjaXR5PSIuNSIvPgogIDxwYXRoIGZpbGw9IiNGRTZCM0MiIGQ9Ik00MTkuNSAyNDkuMDZzMS44OC0yMi4zNC03Ljg4LTQ4Ljk0Yy0yNi43Ny03My4wMS05Mi41Ni04Ny43MS0xMjguMDItODUuNjQgMCAwIDUwLjI4IDIzLjc2IDUyLjYxIDk5LjggMS4wNiAzMy43MiAxLjA2IDM0Ljc4IDEuMDYgMzQuNzhoODIuMjNaIi8+CiAgPHVzZSB4bGluazpocmVmPSIjYSIvPgogIDx1c2UgeGxpbms6aHJlZj0iI2EiLz4KICA8cGF0aCBmaWxsPSIjZmZmIiBkPSJNMzM2Ljc2IDQzNy42MWMwIDI4LjMxLTExLjM5IDcyLjkyLTQ5LjI5IDcyLjkycy00Ny4yLTQ3LjQtNDcuMi03Mi45MmMwIDAgMCA0My4zNiA0Ny4yIDQzLjM2IDUxLjYyIDAgNDkuMy00My4zNiA0OS4zLTQzLjM2WiIvPgogIDxwYXRoIGZpbGw9IiMwNzA5MDkiIGQ9Ik0zMzYuNzYgNDM3LjYxYzAgMjguMzEtMTEuMzkgNzIuOTItNDkuMjkgNzIuOTJzLTQ3LjItNDcuNC00Ny4yLTcyLjkyYzAgMCAwIDQzLjM2IDQ3LjIgNDMuMzYgNTEuNjIgMCA0OS4zLTQzLjM2IDQ5LjMtNDMuMzZaIi8+CiAgPHBhdGggZmlsbD0iI0ZFNjQ0NiIgZD0iTTE5Ny45MyAzOTQuMjVhNzcuODIgNzcuODIgMCAwIDAgNzcuOC03Ny44NWMwLTQzLTM0LjgzLTc3Ljg1LTc3LjgtNzcuODVhNzcuODIgNzcuODIgMCAwIDAtNzcuOCA3Ny44NWMwIDQzIDM0Ljg0IDc3Ljg1IDc3LjggNzcuODVaIi8+CiAgPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTE5Ny43MyAzNzguMzJhNjAuOTQgNjAuOTQgMCAwIDAgNjAuOTItNjAuOTYgNjAuOTQgNjAuOTQgMCAwIDAtNjAuOTItNjAuOTcgNjAuOTQgNjAuOTQgMCAwIDAtNjAuOTIgNjAuOTcgNjAuOTQgNjAuOTQgMCAwIDAgNjAuOTIgNjAuOTZaIi8+CiAgPHBhdGggZmlsbD0iIzA5MEIwQiIgZD0iTTE5NS45NiAzMjUuMjdhMTguNzIgMTguNzIgMCAxIDAtLjAxLTM3LjQ0IDE4LjcyIDE4LjcyIDAgMCAwIC4wMSAzNy40NFoiLz4KICA8cGF0aCBmaWxsPSIjRkU2NDQ2IiBkPSJNMzgxLjEgMzk0LjI1YTc3LjgyIDc3LjgyIDAgMCAwIDc3Ljc5LTc3Ljg1YzAtNDMtMzQuODMtNzcuODUtNzcuOC03Ny44NWE3Ny44MiA3Ny44MiAwIDAgMC03Ny43OSA3Ny44NWMwIDQzIDM0LjgzIDc3Ljg1IDc3LjggNzcuODVaIi8+CiAgPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTM3OCAzNzguMjFhNjAuOTQgNjAuOTQgMCAwIDAgNjAuOTMtNjAuOTZBNjAuOTQgNjAuOTQgMCAwIDAgMzc4IDI1Ni4yOWE2MC45NCA2MC45NCAwIDAgMC02MC45MiA2MC45NkE2MC45NCA2MC45NCAwIDAgMCAzNzggMzc4LjIxWiIvPgogIDxwYXRoIGZpbGw9IiMwOTBCMEIiIGQ9Ik0zNzkuMTMgMzI1LjI3YTE4LjcyIDE4LjcyIDAgMSAwLS4wMi0zNy40NCAxOC43MiAxOC43MiAwIDAgMCAuMDEgMzcuNDRaIi8+Cjwvc3ZnPg=="/></a></g>
+  <text x="1470" y="537" class="label">Argo CD</text>
+  <text x="1470" y="559" class="small">Application sync and health</text>
+  <text x="1470" y="582" class="badge">NOT YET VALIDATED</text>
+
+  <rect x="1400" y="670" width="290" height="105" rx="10" class="external"/>
+  <use href="#cluster" x="1416" y="691" width="44" height="44"/>
+  <text x="1470" y="701" class="label">Workload clusters</text>
+  <text x="1470" y="723" class="small">Managed by existing GitOps</text>
+  <text x="1470" y="746" class="tiny">Not written by the agents</text>
+  <path d="M1350 245H1390" class="optionalLine"/>
+  <path d="M1400 205V185H510V197" class="optionalLine"/>
+  <path d="M1350 400H1390" class="optionalLine"/>
+  <path d="M1350 557H1390" class="optionalLine"/>
+  <path d="M1545 611V660" class="optionalLine"/>
+
+  <text x="40" y="925" class="section">Azure and operational dependencies</text>
+  <rect x="40" y="947" width="355" height="112" rx="10" class="external"/>
+  <g id="official-acr-icon"><image x="57" y="972" width="44" height="44" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,PHN2ZyBpZD0iZTlmN2JhNzMtNTZiOC00ODY0LTk2ZmYtZGNlODBiZWY3MjlhIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImJkZjI3ZGM2LTAyNWMtNDgwNS04YmZkLTNhMDVkZWZkM2ZiZCIgeDE9IjguNjM3IiB5MT0iLTEuOTkxIiB4Mj0iOC42MzciIHkyPSIxNi43MzkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM1ZWEwZWYiIC8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDA3OGQ0IiAvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJmY2Q2YzZjNy1lMmViLTRhMzItYjkxNC0zYTg0ODU1ODVhMWIiIHgxPSIxMi45NiIgeTE9IjguNTYxIiB4Mj0iMTIuOTYiIHkyPSI2LjE0MSIgZ3JhZGllbnRUcmFuc2Zvcm09Im1hdHJpeCgxLCAwLCAwLCAtMSwgMCwgMjApIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMzMzMTMyIiAvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzViNWE1YyIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNNy40Myw4LjE3OGwyLjU4OS0xLjU3Myw3LjI1NSwyLjczMUEzLjY2NCwzLjY2NCwwLDAsMCwxNi4yMyw3LjQ5bC0uMDEtLjA1QTQuMTk0LDQuMTk0LDAsMCwwLDE0LDYuMzJhNC45MSw0LjkxLDAsMCwwLTUuMS00LjdBNS4wNzEsNS4wNzEsMCwwLDAsNC4wNiw0LjkxLDQuNjIxLDQuNjIxLDAsMCwwLDAsOS4zOWE0LjczLDQuNzMsMCwwLDAsNC44OSw0LjU0SDcuNDNaIiBmaWxsPSJ1cmwoI2JkZjI3ZGM2LTAyNWMtNDgwNS04YmZkLTNhMDVkZWZkM2ZiZCkiIC8+PHBvbHlnb24gcG9pbnRzPSIxMC4wNyA3LjE1OSAxMC4wOCAxMS40MzkgMTcuOTkgMTMuMTE5IDE3Ljk5IDEwLjEzOSAxMC4wNyA3LjE1OSIgZmlsbD0iIzc2NzY3NiIgLz48cG9seWxpbmUgcG9pbnRzPSIxMC4wNyA3LjE1OSA3LjkzIDguNDU5IDcuOTMgMTIuNDM5IDEwLjA4IDExLjQzOSIgZmlsbD0iIzk5OSIgLz48cG9seWdvbiBwb2ludHM9IjEzLjY4IDExLjQ5OSAxNC40IDExLjY5OSAxNC40IDkuMzY5IDEzLjY4IDkuMTE5IDEzLjY4IDExLjQ5OSIgZmlsbD0iI2EzYTNhMyIgLz48cG9seWdvbiBwb2ludHM9IjEyLjk2IDguODg5IDEyLjI0IDguNjI5IDEyLjI0IDExLjExOSAxMi45NiAxMS4zMTkgMTIuOTYgOC44ODkiIGZpbGw9IiNhM2EzYTMiIC8+PHBvbHlnb24gcG9pbnRzPSIxNS4xMiAxMS44ODkgMTUuODIgMTIuMDc5IDE1Ljg0IDkuODU5IDE1LjEyIDkuNjE5IDE1LjEyIDExLjg4OSIgZmlsbD0iI2EzYTNhMyIgLz48cG9seWdvbiBwb2ludHM9IjEwLjgxIDEwLjc0OSAxMS41MyAxMC45MjkgMTEuNTMgOC4zOTkgMTAuODEgOC4xNTkgMTAuODEgMTAuNzQ5IiBmaWxsPSIjYTNhM2EzIiAvPjxwb2x5Z29uIHBvaW50cz0iMTcuMjcgMTAuMzQ5IDE2LjU1IDEwLjA5OSAxNi41NSAxMi4yNjkgMTcuMjcgMTIuNDY5IDE3LjI3IDEwLjM0OSIgZmlsbD0iI2EzYTNhMyIgLz48cGF0aCBpZD0iZWYwZDFiNTQtYTFlNy00Y2I5LWE0ZTUtOGE4NTE4ZTdjMTI3IiBkPSJNOC42NiwxMS4zNjlsLS4zNi4yMVY4Ljc0OWwuMzYtLjE5Wm0uNzEtMy4yMkw5LDguMzg5djIuNzVsLjM3LS4yWiIgZmlsbD0iI2IzYjNiMyIgLz48cG9seWdvbiBwb2ludHM9IjE3Ljk5IDEzLjExOSAxNS44MyAxMy44NTkgNy45MyAxMi40MzkgMTAuMDggMTEuNDM5IDE3Ljk5IDEzLjExOSIgZmlsbD0idXJsKCNmY2Q2YzZjNy1lMmViLTRhMzItYjkxNC0zYTg0ODU1ODVhMWIpIiAvPjxwb2x5Z29uIHBvaW50cz0iMTcuOTkgMTYuMTY5IDEwLjA0IDE3LjY3OSAxMC4wOCAxMi4wODkgMTcuOTkgMTMuNTU5IDE3Ljk5IDE2LjE2OSIgZmlsbD0iIzc2NzY3NiIgLz48cG9seWdvbiBwb2ludHM9IjEwLjgxIDE2Ljc1OSAxMC44MSAxMy4yMDkgMTEuNTMgMTMuMjk5IDExLjUzIDE2LjYzOSAxMC44MSAxNi43NTkiIGZpbGw9IiNhM2EzYTMiIC8+PHBvbHlnb24gcG9pbnRzPSIxMi45NiAxNi4zOTkgMTIuMjQgMTYuNTI5IDEyLjI0IDEzLjM4OSAxMi45NiAxMy40OTkgMTIuOTYgMTYuMzk5IDEyLjk2IDE2LjM5OSIgZmlsbD0iI2EzYTNhMyIgLz48cG9seWdvbiBwb2ludHM9IjEzLjY4IDE2LjI4OSAxMy42OCAxMy41NjkgMTQuNCAxMy42NTkgMTQuNCAxNi4xNTkgMTMuNjggMTYuMjg5IiBmaWxsPSIjYTNhM2EzIiAvPjxwb2x5Z29uIHBvaW50cz0iMTUuODMgMTUuOTA5IDE1LjEyIDE2LjAzOSAxNS4xMiAxMy43NDkgMTUuODMgMTMuODU5IDE1LjgzIDE1LjkwOSIgZmlsbD0iI2EzYTNhMyIgLz48cG9seWdvbiBwb2ludHM9IjE3LjI5IDE1LjY3OSAxNi41NSAxNS44MDkgMTYuNTUgMTMuOTI5IDE3LjI0IDE0LjAxOSAxNy4yOSAxNS42NzkiIGZpbGw9IiNhM2EzYTMiIC8+PHBhdGggaWQ9ImI5ZjI1ZWI0LTRjODgtNDVjMi1iYzRkLWY5OTI3NTdkN2UwZSIgZD0iTTcuOTMsMTYuNHYtMy4yNmwyLjE2LTF2NS42WiIgZmlsbD0iIzk5OSIgLz48cGF0aCBpZD0iZWI5MjAwYTctNDY5My00NDI3LWJkYWUtYjMzY2U5MGZmN2YyIiBkPSJNOC42MSwxNi4zODlsLS4zMi0uMTZ2LTIuNzZsLjMyLS4xNVptLjc3LTMuNDUtLjM4LjE5djMuNDhsLjM3LjE5di0zLjg2WiIgZmlsbD0iI2IzYjNiMyIgLz48L3N2Zz4="/></g>
+  <text x="113" y="979" class="label">Azure Container Registry</text>
+  <text x="113" y="1001" class="small">Existing registry and image pull</text>
+  <text x="113" y="1023" class="tiny">CI image publication configured separately</text>
+
+  <rect x="420" y="947" width="355" height="112" rx="10" class="external"/>
+  <g id="official-keyvault-icon"><image x="437" y="972" width="44" height="44" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,PHN2ZyBpZD0iYmM5MzE2OWEtMjRjNC00Njg2LTlmMzctYzdlNGY1M2IzZDM0IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48cmFkaWFsR3JhZGllbnQgaWQ9ImZiMTE0YzkzLTdjMTYtNDU0MC04OTlhLTA3OTYwNDE2MjllNiIgY3g9IjkiIGN5PSI5IiByPSI4LjUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAuMTgiIHN0b3AtY29sb3I9IiM1ZWEwZWYiIC8+PHN0b3Agb2Zmc2V0PSIwLjU2IiBzdG9wLWNvbG9yPSIjNWM5ZmVlIiAvPjxzdG9wIG9mZnNldD0iMC42OSIgc3RvcC1jb2xvcj0iIzU1OWNlZCIgLz48c3RvcCBvZmZzZXQ9IjAuNzgiIHN0b3AtY29sb3I9IiM0YTk3ZTkiIC8+PHN0b3Agb2Zmc2V0PSIwLjg2IiBzdG9wLWNvbG9yPSIjMzk5MGU0IiAvPjxzdG9wIG9mZnNldD0iMC45MyIgc3RvcC1jb2xvcj0iIzIzODdkZSIgLz48c3RvcCBvZmZzZXQ9IjAuOTkiIHN0b3AtY29sb3I9IiMwODdiZDYiIC8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDA3OGQ0IiAvPjwvcmFkaWFsR3JhZGllbnQ+PHJhZGlhbEdyYWRpZW50IGlkPSJlYzQ3OGJkMy01YjM4LTRlN2YtYjY2MS0xMWYzNTU1NzhiZmYiIGN4PSIzOC45NSIgY3k9IjE4Mi4wNyIgcj0iOS44OCIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgtMjguNzEgLTE2My4yNCkgc2NhbGUoMC45NCAwLjk0KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMC4yNyIgc3RvcC1jb2xvcj0iI2ZmZDcwZiIgLz48c3RvcCBvZmZzZXQ9IjAuNDkiIHN0b3AtY29sb3I9IiNmZmNiMTIiIC8+PHN0b3Agb2Zmc2V0PSIwLjg4IiBzdG9wLWNvbG9yPSIjZmVhYzE5IiAvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2ZlYTExYiIgLz48L3JhZGlhbEdyYWRpZW50PjwvZGVmcz48dGl0bGU+SWNvbi1zZWN1cml0eS0yNDU8L3RpdGxlPjxwYXRoIGlkPSJhYWNmODMxMS1hMzE3LTQwMGYtYjYxMy03NGJkMDBkYTVjZTMiIGQ9Ik05LC41QTguNSw4LjUsMCwxLDAsMTcuNSw5LDguNTEsOC41MSwwLDAsMCw5LC41Wk05LDE2LjM0QTcuMzQsNy4zNCwwLDEsMSwxNi4zNCw5LDcuMzQsNy4zNCwwLDAsMSw5LDE2LjM0WiIgZmlsbD0idXJsKCNmYjExNGM5My03YzE2LTQ1NDAtODk5YS0wNzk2MDQxNjI5ZTYpIiAvPjxjaXJjbGUgY3g9IjkiIGN5PSI5IiByPSI3LjM0IiBmaWxsPSIjZmZmIiAvPjxnPjxwYXRoIGlkPSJiZDk4M2M0MS1kYjczLTQwZWMtYTRmNC1kYTEyMTNmYzk5MjQiIGQ9Ik0xMy40NCw3LjMzYTEuODQsMS44NCwwLDAsMCwwLTIuNTloMEwxMC4yOSwxLjU4YTEuODMsMS44MywwLDAsMC0yLjU4LDBoMEw0LjU2LDQuNzRhMS44NCwxLjg0LDAsMCwwLDAsMi41OUw3LjE4LDEwYS41MS41MSwwLDAsMSwuMTUuMzZ2NC44OGEuNjMuNjMsMCwwLDAsLjE4LjQ0bDEuMiwxLjJhLjQxLjQxLDAsMCwwLC41OCwwbDEuMTYtMS4xNmgwbC42OC0uNjhhLjI1LjI1LDAsMCwwLDAtLjM0bC0uNDktLjQ5YS4yNy4yNywwLDAsMSwwLS4zN2wuNDktLjQ5YS4yNS4yNSwwLDAsMCwwLS4zNGwtLjQ5LS40OWEuMjcuMjcsMCwwLDEsMC0uMzdsLjQ5LS40OWEuMjUuMjUsMCwwLDAsMC0uMzRsLS42OC0uNjl2LS4yNVpNOSwyLjM1QTEsMSwwLDAsMSw5LDQuNDIsMSwxLDAsMSwxLDksMi4zNVoiIGZpbGw9InVybCgjZWM0NzhiZDMtNWIzOC00ZTdmLWI2NjEtMTFmMzU1NTc4YmZmKSIgLz48cGF0aCBpZD0iYWQyZTdlNDQtOWJmZC00Nzc1LThiZjQtOGVmMjZhNTQ0OTIxIiBkPSJNOC4xOCwxNS4zaDBhLjIzLjIzLDAsMCwwLC4zOC0uMTd2LTRhLjI0LjI0LDAsMCwwLS4xMS0uMmgwYS4yMi4yMiwwLDAsMC0uMzQuMnY0QS4yOC4yOCwwLDAsMCw4LjE4LDE1LjNaIiBmaWxsPSIjZmY5MzAwIiBvcGFjaXR5PSIwLjc1IiAvPjxyZWN0IGlkPSJhOTk2ZmJmZi0zOTM2LTRiMjQtYjQwNy0zNjkzMzZjMTQzYmEiIHg9IjYuNDgiIHk9IjUuNzkiIHdpZHRoPSI1LjE3IiBoZWlnaHQ9IjAuNjEiIHJ4PSIwLjI4IiBmaWxsPSIjZmY5MzAwIiBvcGFjaXR5PSIwLjc1IiAvPjxyZWN0IGlkPSJiYjEyZDMxYy0zMzUyLTRhMTgtODdkZC1hMTY5YTRhODcyMWQiIHg9IjYuNDgiIHk9IjYuNzgiIHdpZHRoPSI1LjE3IiBoZWlnaHQ9IjAuNjEiIHJ4PSIwLjI4IiBmaWxsPSIjZmY5MzAwIiBvcGFjaXR5PSIwLjc1IiAvPjwvZz48L3N2Zz4="/></g>
+  <text x="493" y="979" class="label">Azure Key Vault</text>
+  <text x="493" y="1001" class="small">GitLab token via CSI mount</text>
+  <text x="493" y="1023" class="tiny">Worker and poller; API configured separately</text>
+
+  <rect x="800" y="947" width="355" height="112" rx="10" class="external"/>
+  <g id="official-openai-icon"><image x="817" y="972" width="44" height="44" preserveAspectRatio="xMidYMid meet" href="data:image/svg+xml;base64,PHN2ZyBpZD0idXVpZC1hZGJkYWU4ZS01YTQxLTQ2ZDEtOGMxOC1hYTczY2RiZmVlMzIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiB2aWV3Qm94PSIwIDAgMTggMTgiPjxkZWZzPjxyYWRpYWxHcmFkaWVudCBpZD0idXVpZC0yYTc0MDdhYS1iNzg3LTQ4ZGQtYTk2YS0wZDgxYWI2ZTkzYmIiIGN4PSItNjcuOTgxIiBjeT0iNzkzLjE5OSIgcj0iLjQ1IiBncmFkaWVudFRyYW5zZm9ybT0idHJhbnNsYXRlKC0xNzkzOS4wMyAyMDM2OC4wMjkpIHJvdGF0ZSg0NSkgc2NhbGUoMjUuMDkxIC0zNC4xNDkpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjODNiOWY5IiAvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzAwNzhkNCIgLz48L3JhZGlhbEdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJtMCwyLjd2MTIuNmMwLDEuNDkxLDEuMjA5LDIuNywyLjcsMi43aDEyLjZjMS40OTEsMCwyLjctMS4yMDksMi43LTIuN1YyLjdjMC0xLjQ5MS0xLjIwOS0yLjctMi43LTIuN0gyLjdDMS4yMDksMCwwLDEuMjA5LDAsMi43Wk0xMC44LDB2My42YzAsMy45NzYsMy4yMjQsNy4yLDcuMiw3LjJoLTMuNmMtMy45NzYsMC03LjE5OSwzLjIyMi03LjIsNy4xOTh2LTMuNTk4YzAtMy45NzYtMy4yMjQtNy4yLTcuMi03LjJoMy42YzMuOTc2LDAsNy4yLTMuMjI0LDcuMi03LjJaIiBmaWxsPSJ1cmwoI3V1aWQtMmE3NDA3YWEtYjc4Ny00OGRkLWE5NmEtMGQ4MWFiNmU5M2JiKSIgc3Ryb2tlLXdpZHRoPSIwIiAvPjwvc3ZnPg=="/></g>
+  <text x="873" y="979" class="label">Azure OpenAI</text>
+  <text x="873" y="1001" class="small">Required for enabled query routing</text>
+  <text x="873" y="1023" class="tiny">Raw questions stay in the application</text>
+
+  <rect x="1180" y="947" width="520" height="112" rx="10" class="external"/>
+  <text x="1200" y="978" class="label">Legend</text>
+  <path d="M1202 997H1270" class="line"/>
+  <text x="1284" y="1002" class="small">Implemented in code</text>
+  <path d="M1202 1028H1270" class="optionalLine"/>
+  <text x="1284" y="1033" class="small">Optional, external or requires setup</text>
+
+  <text x="40" y="1102" class="small">Safety: no automatic promotion or merge. A draft rollback MR requires separate approval, enabled writes and GitLab review.</text>
+  <text x="40" y="1125" class="tiny">The staging image predates query, bundle and rollback. LangGraph currently checkpoints outcomes; it does not orchestrate these agents.</text>
+</svg>

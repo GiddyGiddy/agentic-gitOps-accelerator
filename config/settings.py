@@ -17,6 +17,16 @@ class Settings(BaseSettings):
     gitlab_webhook_enabled: bool = True
     gitlab_poll_project: str = ""
     gitlab_poll_seconds: float = Field(default=60.0, gt=0)
+    gitlab_build_poll_enabled: bool = False
+    gitlab_build_poll_seconds: float = Field(default=60.0, ge=30)
+    traceability_enabled: bool = False
+    traceability_build_jobs: str = ""
+    traceability_deploy_jobs: str = ""
+    traceability_manifest_path: str = "gitops-provenance.json"
+    traceability_harbor_project: str = ""
+    traceability_harbor_repository: str = ""
+    traceability_jira_prefixes: str = ""
+    traceability_patch_directory: str = "chart-patch-files"
     argocd_url: str = ""
     argocd_token: str = ""
     argocd_webhook_secret: str = ""
@@ -32,6 +42,13 @@ class Settings(BaseSettings):
     query_secret: str = Field(default="", repr=False)
     query_applications: str = ""
     query_projects: str = ""
+    bundle_enabled: bool = False
+    bundle_gateway_secret: str = Field(default="", repr=False)
+    bundle_image_repositories: str = ""
+    bundle_config_projects: str = ""
+    rollback_enabled: bool = False
+    rollback_gateway_secret: str = Field(default="", repr=False)
+    rollback_targets: str = ""
     write_enabled: bool = False
     config_dir: str = "config"
     worker_poll_seconds: float = Field(default=2.0, gt=0)

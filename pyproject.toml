@@ -32,6 +32,7 @@ gitops-worker = "app.worker:main"
 gitops-migrate = "app.storage.migrate:main"
 gitops-mcp = "app.mcp.server:main"
 gitops-gitlab-poller = "app.gitlab_poller:main"
+gitops-traceability-backfill = "app.traceability:main"
 
 [tool.setuptools.packages.find]
 include = ["app*", "config*"]
