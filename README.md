@@ -61,64 +61,14 @@ does not replace them or write directly to workload clusters.
 - The Helm chart uses a non-root service account with no Kubernetes permissions,
   no mounted API token, a read-only filesystem and an externally managed secret.
 
-## Important limitations
 
-- Checkpointed graphs record event outcomes per thread, but the multi-step
-  promotion state machine, human-in-the-loop interrupt and job-to-release
-  correlation are not implemented. Poll/backfill events for the same build
-  share a build thread; release tags and approvals share a release thread. Checkpoints
-  and application transactions use separate connections: the inbox and ledger
-  are authoritative if a checkpoint is ahead after a crash. Never initiate an
-  external action solely from checkpoint state.
-- The model is advisory only and is not an autonomous supervisor. Preflight,
-  promotion, rollback, and ChatOps have no model integration. Model output is
-  untrusted, may be inaccurate, and requires human review.
-- The query endpoint has a shared deployment-level secret, not individual
-  identities or per-user authorization. Everyone with the secret can query all
-  configured resources using the service's upstream credentials. It has no
-  per-user audit trail, rate limiting, Jira API integration, rollback, or
-  mutation capabilities. Release bundles use separate endpoints and controls.
-- Bundle approval depends on a separately implemented trusted identity gateway
-  and trusted CI provenance. It is not a promotion authorization or proof of
-  live pod image IDs, deployed chart digest, or package contents.
-- Rollback stages GitLab changes only when explicitly enabled and authorized;
-  it does not merge or deploy. It is not integrated into the natural-language
-  query endpoint or supervisor.
-- **No automatic promotion, job play, branch creation, corrected MR, hotfix,
-  rollback, health polling, or Teams notification is wired into the supervisor.**
-  An approval is recorded but does not advance a release. The API client
-  methods are primitives, not authorization for automation. A signed-in Teams
-  gateway, application-specific policy, transaction/outbox design and a
-  tested per-release state machine are required before enabling those actions.
-- The MCP servers expose no GitLab writes, Helm rendering, or Teams tools.
-  Their shared bearer token is a deployment-level credential, not OAuth or
-  per-user authorization. Anyone holding it can invoke all registered reads
-  permitted by the upstream service credentials. Use least-privilege upstream
-  accounts and restrict access to the MCP proxy and its backend.
-- MR violations are advisory comments only: they do not block merges. The diff
-  check uses path/name and added-line heuristics; it is not a YAML-aware
-  enforcement engine. Enforce required checks separately in GitLab. An
-  incomplete GitLab diff is rejected.
-- Preflight is not inserted into your existing pipeline. The CLI itself does
-  **not** create a sandbox or disable network; run it in an ephemeral CI
-  environment with network disabled and a read-only, untrusted checkout, and
-  require its success before your actual chart-build job. It compares ConfigMap
-  key names only, not schemas or Kubernetes runtime behavior.
-- CSV columns and Argo CD source/revision checks are examples. They must match
-  your chart deployment and artifact format. Argo CD health is an Application
-  health summary, not an independent pod-readiness check. No real GitLab,
-  Harbor, Argo CD, Teams, Kubernetes, Helm or PostgreSQL service was exercised
-  by the included unit tests.
-- Delivery IDs deduplicate retries but do not prevent an authorized sender from
-  inventing new IDs. Put these
-  endpoints behind TLS, restrict ingress, and use an authenticated trusted
-  gateway. The gateway must validate Teams identities and set `actor` to the
-  immutable identity in the allowlist; never accept an end-user-supplied actor.
-  Protect the gateway secret and separate it from GitLab and Argo CD secrets.
-- Run the explicit migration command before starting the service; use a
-  dedicated database role and protect both inbox and checkpoint contents. API
-  access, audit retention, webhook limits, secret rotation, egress policy,
-  monitoring, and disaster recovery require deployment-specific design.
+
+
+
+
+
+
+
 
 ## Run locally
 
@@ -245,16 +195,6 @@ With the traceability index configured, two additional query examples are:
 {"question":"Was this a planned release or emergency hotfix?","project":"team/chart","chart_version":"260801.5"}
 ```
 
-The application can be inferred when exactly one authorized name appears in the
-question. The project can be omitted only if there is exactly one authorized
-project; refs can be omitted when the question includes `between <ref> and
-<ref>`. Explicit fields are recommended. Refs need not be branches: GitLab
-compares the specified refs in the `from_ref` to `to_ref` direction. Unsupported,
-ambiguous, write-oriented, or unauthorized requests fail rather than triggering
-actions. The Azure model receives only a fixed vocabulary of generic keywords,
-never the raw question, resource names, refs, repository content, diffs, or
-service credentials. It selects a strictly validated intent; local code
-performs all resource authorization and read-only operations.
 
 Responses provide an observation time, evidence links and limitations.
 Chart-version resolution requires a single-source Argo CD Application, a
@@ -608,40 +548,6 @@ the gateway and credentials. Concurrent webhook/poller ingestion and reliable
 cross-channel deduplication are not implemented; switching can miss or repeat
 observations and needs an operator-controlled cutover and reconciliation.
 
-## Worker operation and recovery
-
-Use PostgreSQL, run `gitops-migrate` once per deployment before starting API or
-workers, and start `gitops-worker` as a separate process. The chart includes a
-worker deployment but does not run migrations. Migration adopts the existing
-baseline tables by name; back up and verify their schema before upgrading an
-existing installation. The migration role needs DDL privileges; runtime roles
-need access to the application and LangGraph checkpoint tables. Use an
-appropriately scoped database connection and secure transport.
-
-The worker locks inbox rows and serializes release threads with PostgreSQL
-transaction advisory locks. Later events for a release wait behind a failed
-earlier event; unrelated threads can continue. Processing failures are
-recorded as `failed` and logged; there is no automatic retry. After diagnosis,
-an operator can run `gitops-worker --retry-event <id>`. To reject an
-irrecoverably invalid event and unblock its thread, run
-`gitops-worker --reject-event <id> --reason "<reason>"`; the rejection is
-audited. For example, an approval received before its tag must be rejected
-and re-submitted after the tag is processed.
-
-MR comments are committed to the outbox with the event transaction. With
-`WRITE_ENABLED=true`, the worker records `sending` before posting. Any error
-is `uncertain`; a worker crash can leave `sending`. Neither is automatically
-retried, since the remote comment might already exist. Operators must inspect
-GitLab and reconcile those rows manually. Do not copy this comment dispatcher
-as an exactly-once protocol for job plays or rollback MRs.
-
-The baseline tests use SQLite and an in-memory checkpointer. The optional
-PostgreSQL tests require a **dedicated, empty disposable database**, with
-`GITOPS_TEST_DATABASE_URL` set to its SQLAlchemy connection string:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q tests\test_postgres_workflow.py
-```
 
 ## Read-only MCP servers
 
@@ -699,12 +605,7 @@ or rollback. The model is not used when no routing findings exist.
 The only data sent to either provider is a fixed system instruction and an
 allowlisted task and finding category. The adapter does **not** send paths,
 diffs, source code, job IDs, project IDs, tenant names, chart versions,
-credentials, or raw errors. Model output is untrusted; do not treat it as an
-approval or execute commands it suggests. A crash or operator retry may repeat
-a model request and incur additional charges. The model call is made while the
-worker holds its event transaction, so size the timeout accordingly. Ensure
-your organization has approved the configured endpoint and egress.
-
+credentials, or raw errors. 
 To enable Azure OpenAI, install the updated dependencies and configure the
 worker with `GITOPS_LLM_ENABLED=true`, `GITOPS_LLM_PROVIDER=azure_openai`,
 `GITOPS_LLM_AZURE_ENDPOINT=https://<resource>.openai.azure.com`, and
@@ -755,14 +656,3 @@ gitops-preflight --chart ./chart --baseline ./values/vn_base.yaml \
 Require this command to exit successfully before `build_and_push_chart`.
 The isolation is a responsibility of the runner platform, not the application.
 The API service does not invoke Helm or have Kubernetes API access.
-
-## Deployment
-
-Create an externally managed Kubernetes Secret containing the configured
-environment variables, set `existingSecret`, set the image and deploy the
-chart in `deploy/helm/helix-gitops-agents`. The chart intentionally grants no
-Kubernetes read or write permissions because this implementation uses Argo CD
-over HTTPS. It does not configure ingress, TLS, database provisioning or network
-policy. Do not deploy it until those controls and the limitations above are
-addressed. The sample GitLab pipeline tests and builds an image but does not
-publish it.

@@ -11,8 +11,11 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: {{ .Release.Name }}-agents
+        {{- if .Values.uiKeyVault.enabled }}
+        azure.workload.identity/use: "true"
+        {{- end }}
     spec:
-      serviceAccountName: {{ .Values.serviceAccount.name }}
+      serviceAccountName: {{ if .Values.uiKeyVault.enabled }}{{ .Values.uiKeyVault.serviceAccountName }}{{ else }}{{ .Values.serviceAccount.name }}{{ end }}
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -29,6 +32,10 @@ spec:
             - secretRef:
                 name: {{ .Values.existingSecret }}
           env:
+            {{- if .Values.uiKeyVault.enabled }}
+            - name: GITOPS_UI_ENTRA_CLIENT_SECRET_FILE
+              value: /mnt/ui-secret/client-secret
+            {{- end }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -46,5 +53,20 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          {{- if .Values.uiKeyVault.enabled }}
+          volumeMounts:
+            - name: ui-secret
+              mountPath: /mnt/ui-secret
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.uiKeyVault.enabled }}
+      volumes:
+        - name: ui-secret
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Release.Name }}-ui-secret
+      {{- end }}

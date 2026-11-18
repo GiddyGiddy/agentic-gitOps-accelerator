@@ -6,10 +6,18 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.0"
+    }
   }
 }
 
 provider "azurerm" {
   features {}
   resource_provider_registrations = "none"
+}
+
+provider "azapi" {
+  enable_preflight = true
 }

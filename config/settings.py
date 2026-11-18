@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     llm_self_hosted_api_key: str = Field(default="", repr=False)
     llm_allow_insecure_loopback: bool = False
     llm_timeout_seconds: float = Field(default=20, gt=0, le=60)
+    ui_enabled: bool = False
+    ui_public_origin: str = ""
+    ui_entra_tenant_id: str = ""
+    ui_entra_client_id: str = ""
+    ui_entra_client_secret: str = Field(default="", repr=False)
+    ui_entra_client_secret_file: str = ""
+    ui_allowed_users: str = ""
 
     @property
     def approvers(self) -> set[str]:
@@ -79,8 +86,16 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     if settings.gitlab_token_file:
-        token = Path(settings.gitlab_token_file).read_text(encoding="utf-8").rstrip("\r\n")
-        if not token or token != token.strip():
-            raise RuntimeError("The GitLab token file is empty or contains surrounding whitespace")
-        settings.gitlab_token = token
+        settings.gitlab_token = _read_secret(settings.gitlab_token_file, "GitLab token")
+    if settings.ui_entra_client_secret_file:
+        settings.ui_entra_client_secret = _read_secret(
+            settings.ui_entra_client_secret_file, "Entra client secret"
+        )
     return settings
+
+
+def _read_secret(path: str, name: str) -> str:
+    value = Path(path).read_text(encoding="utf-8").rstrip("\r\n")
+    if not value or value != value.strip():
+        raise RuntimeError(f"The {name} file is empty or contains surrounding whitespace")
+    return value

@@ -1,0 +1,98 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gitops-console
+  namespace: gitops-staging
+spec:
+  gatewayClassName: approuting-istio
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/azure-pip-name: pip-agentic-gitops-console
+  listeners:
+    - name: http
+      hostname: agegitops.giddyitsolutions.com
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      hostname: agegitops.giddyitsolutions.com
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: gitops-console-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gitops-console-https
+  namespace: gitops-staging
+spec:
+  parentRefs:
+    - name: gitops-console
+      sectionName: https
+  hostnames:
+    - agegitops.giddyitsolutions.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /console
+      backendRefs:
+        - name: helix-agents
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gitops-console-http-redirect
+  namespace: gitops-staging
+spec:
+  parentRefs:
+    - name: gitops-console
+      sectionName: http
+  hostnames:
+    - agegitops.giddyitsolutions.com
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: gitops-console-letsencrypt
+  namespace: gitops-staging
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: gitops-console-acme-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: gitops-console
+                kind: Gateway
+                sectionName: http
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gitops-console
+  namespace: gitops-staging
+spec:
+  secretName: gitops-console-tls
+  issuerRef:
+    name: gitops-console-letsencrypt
+    kind: Issuer
+  dnsNames:
+    - agegitops.giddyitsolutions.com

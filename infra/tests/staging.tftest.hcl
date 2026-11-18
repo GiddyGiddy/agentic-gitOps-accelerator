@@ -9,6 +9,10 @@ mock_provider "azurerm" {
 
 }
 
+mock_provider "azapi" {
+  override_during = plan
+}
+
 variables {
   operator_object_id = "00000000-0000-0000-0000-000000000003"
 }
@@ -21,6 +25,15 @@ override_resource {
   }
 }
 
+override_resource {
+  target          = azurerm_user_assigned_identity.console[0]
+  override_during = plan
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/console"
+    principal_id = "00000000-0000-0000-0000-000000000004"
+  }
+}
+
 run "secure_cluster_configuration" {
   command = plan
 
@@ -29,6 +42,11 @@ run "secure_cluster_configuration" {
     gitlab_key_vault_enabled     = true
     gitlab_key_vault_name        = "test-vault"
     gitlab_key_vault_secret_name = "gitlab-token"
+    ui_key_vault_enabled         = true
+    ui_key_vault_name            = "test-vault"
+    ui_key_vault_secret_name     = "console-secret"
+    ui_public_gateway_enabled    = true
+    ui_public_dns_label          = "test-gitops-console"
   }
 
   assert {
@@ -63,6 +81,25 @@ run "secure_cluster_configuration" {
       endswith(azurerm_role_assignment.gitlab_secret_user[0].scope, "/vaults/test-vault/secrets/gitlab-token")
     )
     error_message = "GitLab token access must be enabled and scoped to the specific secret."
+  }
+
+  assert {
+    condition = (
+      azurerm_federated_identity_credential.console[0].subject == "system:serviceaccount:gitops-staging:gitops-console" &&
+      azurerm_role_assignment.ui_secret_user[0].role_definition_name == "Key Vault Secrets User" &&
+      endswith(azurerm_role_assignment.ui_secret_user[0].scope, "/vaults/test-vault/secrets/console-secret") &&
+      azurerm_role_assignment.ui_secret_user[0].principal_id == azurerm_user_assigned_identity.console[0].principal_id
+    )
+    error_message = "Console secret access must use the dedicated console identity and secret scope."
+  }
+
+  assert {
+    condition = (
+      azurerm_public_ip.ui_gateway[0].allocation_method == "Static" &&
+      azurerm_public_ip.ui_gateway[0].sku == "Standard" &&
+      azurerm_public_ip.ui_gateway[0].domain_name_label == "test-gitops-console"
+    )
+    error_message = "Console ingress must use a static Standard public IP with the configured DNS label."
   }
 }
 

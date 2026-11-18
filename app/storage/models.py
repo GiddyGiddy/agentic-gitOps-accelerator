@@ -173,3 +173,13 @@ class RollbackPlan(Base):
     approved_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     merge_request_iid: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UISession(Base):
+    __tablename__ = "ui_sessions"
+    id_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    actor: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    csrf_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    login_flow: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

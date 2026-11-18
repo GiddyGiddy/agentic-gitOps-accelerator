@@ -1,0 +1,15 @@
+uiKeyVault:
+  enabled: true
+  vaultName: kv-inventarmind-de4cc0
+  secretName: AgenticGitOps-secret
+  tenantId: fd58bbca-b54d-436b-a7bc-3cb0e2c1181a
+env:
+  GITOPS_UI_ENABLED: "true"
+  GITOPS_UI_PUBLIC_ORIGIN: "https://agegitops.giddyitsolutions.com"
+  GITOPS_UI_ENTRA_TENANT_ID: "fd58bbca-b54d-436b-a7bc-3cb0e2c1181a"
+  GITOPS_UI_ENTRA_CLIENT_ID: "3f6ce1de-a5ed-43f0-bc06-aabd2ad1edcf"
+  GITOPS_TEAMS_APPROVERS: ""
+  GITOPS_QUERY_ENABLED: "false"
+  GITOPS_BUNDLE_ENABLED: "false"
+  GITOPS_ROLLBACK_ENABLED: "false"
+  GITOPS_WRITE_ENABLED: "false"

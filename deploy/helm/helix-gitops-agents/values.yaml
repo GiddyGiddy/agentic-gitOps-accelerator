@@ -7,6 +7,13 @@ gitlabKeyVault:
   vaultName: ""
   secretName: ""
   tenantId: ""
+uiKeyVault:
+  enabled: false
+  vaultName: ""
+  secretName: ""
+  tenantId: ""
+  clientId: ""
+  serviceAccountName: gitops-console
 mcp:
   enabled: false
   replicaCount: 1

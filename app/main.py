@@ -26,6 +26,7 @@ from app.storage.db import create_database
 from app.storage.inbox import enqueue
 from app.storage.models import InboxEvent
 from app.supervisor.guardrails import PolicyViolation, require_approver, verify_secret
+from app.ui import router as console_router
 from config.settings import get_settings
 
 settings = get_settings()
@@ -228,3 +229,20 @@ def approve(
     except PolicyViolation as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return accept(request, "teams", payload.request_id, {"kind": "approval", "payload": payload.model_dump()})
+
+
+app.include_router(console_router)
+
+
+@app.middleware("http")
+async def console_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/console"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+            "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        )
+    return response

@@ -48,7 +48,7 @@ resource "azurerm_kubernetes_cluster" "staging" {
   default_node_pool {
     name            = "system"
     vm_size         = var.node_vm_size
-    node_count      = 1
+    node_count      = 2
     os_disk_size_gb = 32
     os_disk_type    = "Managed"
 
@@ -84,7 +84,7 @@ resource "azurerm_kubernetes_cluster" "staging" {
   }
 
   dynamic "key_vault_secrets_provider" {
-    for_each = var.gitlab_key_vault_enabled ? [1] : []
+    for_each = var.gitlab_key_vault_enabled || var.ui_key_vault_enabled ? [1] : []
     content {
       secret_rotation_enabled = false
     }
@@ -142,6 +142,78 @@ resource "azurerm_role_assignment" "gitlab_secret_user" {
     precondition {
       condition     = can(regex("^[A-Za-z0-9-]{3,24}$", var.gitlab_key_vault_name)) && can(regex("^[A-Za-z0-9-]{1,127}$", var.gitlab_key_vault_secret_name))
       error_message = "Provide valid GitLab Key Vault and secret names."
+    }
+  }
+}
+
+resource "azurerm_user_assigned_identity" "console" {
+  count               = var.ui_key_vault_enabled ? 1 : 0
+  name                = "id-agentic-gitops-console-test"
+  resource_group_name = azurerm_resource_group.staging.name
+  location            = azurerm_resource_group.staging.location
+  tags                = local.tags
+}
+
+resource "azurerm_federated_identity_credential" "console" {
+  count                     = var.ui_key_vault_enabled ? 1 : 0
+  name                      = "gitops-console"
+  user_assigned_identity_id = azurerm_user_assigned_identity.console[0].id
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = azurerm_kubernetes_cluster.staging.oidc_issuer_url
+  subject                   = "system:serviceaccount:${var.namespace}:${var.ui_service_account_name}"
+}
+
+resource "azurerm_role_assignment" "ui_secret_user" {
+  count                = var.ui_key_vault_enabled ? 1 : 0
+  scope                = "${local.existing_scope}/Microsoft.KeyVault/vaults/${var.ui_key_vault_name}/secrets/${var.ui_key_vault_secret_name}"
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.console[0].principal_id
+  principal_type       = "ServicePrincipal"
+
+  lifecycle {
+    precondition {
+      condition     = can(regex("^[A-Za-z0-9-]{3,24}$", var.ui_key_vault_name)) && can(regex("^[A-Za-z0-9-]{1,127}$", var.ui_key_vault_secret_name))
+      error_message = "Provide valid console Key Vault and secret names."
+    }
+  }
+}
+
+resource "azapi_update_resource" "ui_gateway" {
+  count       = var.ui_public_gateway_enabled ? 1 : 0
+  type        = "Microsoft.ContainerService/managedClusters@2026-03-01"
+  resource_id = azurerm_kubernetes_cluster.staging.id
+  body = {
+    properties = {
+      ingressProfile = {
+        gatewayAPI = {
+          installation = "Standard"
+        }
+        webAppRouting = {
+          gatewayAPIImplementations = {
+            appRoutingIstio = {
+              mode = "Enabled"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "azurerm_public_ip" "ui_gateway" {
+  count               = var.ui_public_gateway_enabled ? 1 : 0
+  name                = "pip-agentic-gitops-console"
+  resource_group_name = azurerm_kubernetes_cluster.staging.node_resource_group
+  location            = azurerm_resource_group.staging.location
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  domain_name_label   = var.ui_public_dns_label
+  tags                = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = var.ui_public_dns_label != ""
+      error_message = "A public DNS label is required when the console gateway is enabled."
     }
   }
 }

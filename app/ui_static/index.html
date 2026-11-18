@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitOps Control Plane</title>
+  <link rel="stylesheet" href="/console/assets/style.css">
+  <script src="/console/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/console"><span class="brand-mark">G</span><span>GitOps<span class="brand-sub">CONTROL PLANE</span></span></a>
+      <div class="nav-label">WORKSPACE</div>
+      <nav aria-label="Workspace navigation">
+        <button class="nav-item active" type="button" data-panel="chat"><span>✦</span> Query assistant</button>
+        <button class="nav-item" type="button" data-panel="bundles"><span>▣</span> Release bundles</button>
+        <button class="nav-item" type="button" data-panel="rollbacks"><span>↶</span> Rollback plans</button>
+        <button class="nav-item" type="button" data-panel="waves"><span>✓</span> Wave approvals</button>
+      </nav>
+      <div class="side-note"><span class="side-dot"></span><div><strong>Human in control</strong><p>Approvals never merge or deploy changes automatically.</p></div></div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div><span class="eyebrow">OPERATIONS WORKSPACE</span><div class="topbar-title">Release intelligence <span class="badge">CONTROL PLANE</span></div></div>
+        <div class="user-area"><span id="identity">Not signed in</span><a id="login-link" class="button secondary" href="/console/login">Sign in with Microsoft</a><button id="logout" class="button secondary hidden" type="button">Sign out</button></div>
+      </header>
+      <div id="notice" class="notice hidden" role="status" aria-live="polite"></div>
+      <div id="signin" class="signin hidden"><div class="signin-icon">✦</div><h1>Your GitOps operations, in context.</h1><p>Sign in with an authorized Microsoft Entra account to query release evidence and review approvals.</p><a class="button primary" href="/console/login">Sign in with Microsoft <span>→</span></a></div>
+      <div id="workspace" class="workspace hidden">
+        <section id="chat" class="panel">
+          <div class="heading"><div><div class="eyebrow">RELEASE INTELLIGENCE</div><h1>Query assistant</h1><p>Ask a question about deployments, chart versions, fixes or release origins.</p></div><span class="pill"><span class="status-dot"></span> READ ONLY</span></div>
+          <div class="layout">
+            <div class="chat-card">
+              <div class="card-heading"><div><strong>Conversation</strong><span>Evidence-backed answers from your GitOps sources</span></div><span class="icon-bubble">✦</span></div>
+              <div id="messages" class="messages" aria-live="polite"><div class="welcome"><div class="welcome-icon">✦</div><h2>What would you like to investigate?</h2><p>Choose an example or ask your own question below.</p><div class="examples"><button type="button" data-example="Which chart version is deployed?">Which chart version is deployed? <span>↗</span></button><button type="button" data-example="What changed between master and release/VN1?">Compare two release branches <span>↗</span></button><button type="button" data-example="Which chart package contained a Jira fix?">Find a fix in a chart package <span>↗</span></button></div></div></div>
+              <form id="query-form" class="composer">
+                <label class="sr-only" for="question">Your GitOps question</label>
+                <textarea id="question" name="question" rows="2" maxlength="1000" required placeholder="Ask a question about your releases..."></textarea>
+                <details><summary>Optional context</summary><div class="context-grid"><label>Application<input name="application" placeholder="viseca-prod"></label><label>Project<input name="project" placeholder="team/chart"></label><label>From ref<input name="from_ref" placeholder="master"></label><label>To ref<input name="to_ref" placeholder="release/VN1"></label><label>Jira ID<input name="jira_id" placeholder="GVH1797"></label><label>Chart version<input name="chart_version" placeholder="260801.5"></label></div></details>
+                <div class="composer-footer"><span>Azure OpenAI classifies filtered keywords; raw questions stay here.</span><button class="button primary" type="submit">Ask assistant <span>→</span></button></div>
+              </form>
+            </div>
+            <aside class="insights">
+              <div class="info-card"><div class="eyebrow">HOW IT WORKS</div><h3>Answers with context</h3><div class="step"><span>1</span><p>Ask about an authorized project or application.</p></div><div class="step"><span>2</span><p>The query agent collects available evidence.</p></div><div class="step"><span>3</span><p>Review the result, evidence and limitations.</p></div></div>
+              <div class="info-card tint"><div class="eyebrow">IMPORTANT</div><h3>Read-only by design</h3><p>Queries do not approve, deploy or roll back. Missing or stale evidence is reported rather than guessed.</p></div>
+            </aside>
+          </div>
+        </section>
+        <section id="bundles" class="panel hidden">
+          <div class="heading"><div><div class="eyebrow">RELEASE ASSURANCE</div><h1>Release bundles</h1><p>Inspect a release package and approve its evidence, or check for drift.</p></div><span class="pill">EXPLICIT APPROVAL</span></div>
+          <div class="two-col"><div class="surface"><h2>Find or create a bundle</h2><p>Use a bundle fingerprint or create one from an indexed build.</p><form id="bundle-load"><label>Bundle fingerprint<input id="bundle-id" pattern="[a-f0-9]{64}" required placeholder="64-character fingerprint"></label><button class="button primary">Load bundle</button></form><hr><form id="bundle-create"><label>GitLab project<input name="project" required placeholder="team/chart"></label><label>Build job ID<input name="job_id" type="number" min="1" required></label><button class="button secondary" data-approver>Create bundle</button></form></div>
+            <div class="surface"><h2>Review and approve</h2><p>Approval records the selected bundle; it does not promote or deploy.</p><pre id="bundle-result" class="output">Load a bundle to inspect its manifest.</pre><button id="bundle-approve" class="button primary" disabled>Approve reviewed bundle</button><form id="drift-form"><label>Application for drift check<input name="application" required placeholder="viseca-prod"></label><button class="button secondary">Check drift</button></form><pre id="drift-result" class="output hidden"></pre></div></div>
+        </section>
+        <section id="rollbacks" class="panel hidden">
+          <div class="heading"><div><div class="eyebrow">CONTROLLED RECOVERY</div><h1>Rollback plans</h1><p>Propose a rollback to an approved bundle, review the exact diff, then approve separately.</p></div><span class="pill">DRAFT MR ONLY</span></div>
+          <div class="two-col"><div class="surface"><h2>Propose or find a plan</h2><p>The configured allowlist determines which files can be restored.</p><form id="rollback-create"><label>Approved bundle fingerprint<input name="bundle_fingerprint" pattern="[a-f0-9]{64}" required></label><label>Application<input name="application" required placeholder="viseca-prod"></label><button class="button primary" data-approver>Propose rollback</button></form><hr><form id="rollback-load"><label>Existing plan ID<input id="rollback-id" required placeholder="Plan ID"></label><button class="button secondary" data-approver>Load plan and preview</button></form></div>
+            <div class="surface"><h2>Review and authorize</h2><p>Inspect the plan and all file changes before approving. Execution creates a draft GitLab MR only.</p><pre id="rollback-result" class="output">Load a plan to view its evidence and diff.</pre><div class="button-row"><button id="rollback-approve" class="button primary" disabled>Approve reviewed plan</button><button id="rollback-execute" class="button secondary" disabled>Stage draft MR</button></div></div></div>
+        </section>
+        <section id="waves" class="panel hidden">
+          <div class="heading"><div><div class="eyebrow">RELEASE GOVERNANCE</div><h1>Wave approvals</h1><p>Record an approval for a known release and wave. This does not start a deployment.</p></div><span class="pill">RECORDED ONLY</span></div>
+          <div class="two-col"><div class="surface"><h2>Submit wave approval</h2><p>The worker verifies the release, project and configured wave after the event is accepted.</p><form id="wave-form"><label>GitLab project ID<input name="project_id" type="number" min="1" required></label><label>Release<input name="release" required placeholder="VN2608-1"></label><label>Wave<input name="wave" required placeholder="wave-1"></label><button class="button primary" data-approver>Record approval</button></form><hr><form id="wave-status"><label>Approval event ID<input name="event_id" type="number" min="1" required></label><button class="button secondary" data-approver>Check processing status</button></form><pre id="wave-result" class="output hidden"></pre></div>
+            <div class="surface"><div class="eyebrow">MICROSOFT TEAMS</div><h2>What is implemented?</h2><div class="callout"><strong>Gateway contract, not a Teams bot</strong><p>The existing ChatOps endpoint accepts approvals from a separately trusted gateway. A Teams bot, interactive cards and identity-verifying Teams gateway are not implemented.</p></div><p>This console uses its own Entra sign-in and records approvals directly. Neither path advances the release or plays a GitLab job.</p></div></div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

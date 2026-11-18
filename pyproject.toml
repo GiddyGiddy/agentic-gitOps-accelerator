@@ -21,6 +21,10 @@ dependencies = [
   "mcp>=1.30,<2",
   "openai>=2,<3",
   "azure-identity>=1.19,<2",
+  "msal>=1.31,<2",
+  "PyJWT[crypto]>=2.10,<3",
+  "requests>=2.31,<3",
+  "python-multipart>=0.0.18,<1",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +40,9 @@ gitops-traceability-backfill = "app.traceability:main"
 
 [tool.setuptools.packages.find]
 include = ["app*", "config*"]
+
+[tool.setuptools.package-data]
+app = ["ui_static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

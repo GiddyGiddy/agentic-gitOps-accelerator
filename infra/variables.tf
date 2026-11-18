@@ -92,3 +92,44 @@ variable "gitlab_key_vault_secret_name" {
   type        = string
   default     = ""
 }
+
+variable "ui_key_vault_enabled" {
+  description = "Enable a dedicated console identity and Key Vault client-secret access."
+  type        = bool
+  default     = false
+}
+
+variable "ui_key_vault_name" {
+  description = "Existing Key Vault name containing the Entra client secret."
+  type        = string
+  default     = ""
+}
+
+variable "ui_key_vault_secret_name" {
+  description = "Existing Key Vault secret name for the Entra client secret."
+  type        = string
+  default     = ""
+}
+
+variable "ui_service_account_name" {
+  description = "Dedicated console service account name, matching the Helm chart."
+  type        = string
+  default     = "gitops-console"
+}
+
+variable "ui_public_gateway_enabled" {
+  description = "Enable the managed Gateway API and a public IP for the staging console."
+  type        = bool
+  default     = false
+}
+
+variable "ui_public_dns_label" {
+  description = "Azure public DNS label for the console gateway."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.ui_public_dns_label == "" || can(regex("^[a-z][a-z0-9-]{1,61}[a-z0-9]$", var.ui_public_dns_label))
+    error_message = "The Azure DNS label must be lowercase, 3-63 characters, and contain only letters, digits and interior hyphens."
+  }
+}
