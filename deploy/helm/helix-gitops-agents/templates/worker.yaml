@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-worker
+spec:
+  replicas: {{ .Values.workerReplicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Release.Name }}-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-worker
+        {{- if .Values.azureWorkloadIdentity.enabled }}
+        azure.workload.identity/use: "true"
+        {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["gitops-worker"]
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+          env:
+            {{- if (.Values.gitlabKeyVault | default dict).enabled }}
+            - name: GITOPS_GITLAB_TOKEN_FILE
+              value: /mnt/gitlab-token/gitlab-token
+            {{- end }}
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- if (.Values.gitlabKeyVault | default dict).enabled }}
+          volumeMounts:
+            - name: gitlab-token
+              mountPath: /mnt/gitlab-token
+              readOnly: true
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if (.Values.gitlabKeyVault | default dict).enabled }}
+      volumes:
+        - name: gitlab-token
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Release.Name }}-gitlab-token
+      {{- end }}

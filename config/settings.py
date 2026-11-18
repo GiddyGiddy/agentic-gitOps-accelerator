@@ -1,0 +1,69 @@
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="GITOPS_", env_file=".env", extra="ignore")
+
+    database_url: str = "postgresql+psycopg://localhost/gitops"
+    gitlab_url: str = ""
+    gitlab_token: str = Field(default="", repr=False)
+    gitlab_token_file: str = ""
+    gitlab_webhook_secret: str = ""
+    gitlab_webhook_enabled: bool = True
+    gitlab_poll_project: str = ""
+    gitlab_poll_seconds: float = Field(default=60.0, gt=0)
+    argocd_url: str = ""
+    argocd_token: str = ""
+    argocd_webhook_secret: str = ""
+    harbor_url: str = ""
+    harbor_username: str = ""
+    harbor_password: str = ""
+    deploy_csv_path: str = "deploy_output.csv"
+    teams_gateway_secret: str = ""
+    teams_gateway_url: str = ""
+    teams_approvers: str = ""
+    status_secret: str = ""
+    query_enabled: bool = False
+    query_secret: str = Field(default="", repr=False)
+    query_applications: str = ""
+    query_projects: str = ""
+    write_enabled: bool = False
+    config_dir: str = "config"
+    worker_poll_seconds: float = Field(default=2.0, gt=0)
+    mcp_mode: Literal["direct", "mcp"] = "direct"
+    mcp_base_url: str = ""
+    mcp_bearer_token: str = ""
+    mcp_allow_insecure_loopback: bool = False
+    mcp_allowed_hosts: str = "127.0.0.1:*,localhost:*"
+    mcp_allowed_origins: str = ""
+    llm_enabled: bool = False
+    llm_provider: Literal["azure_openai", "self_hosted"] = "azure_openai"
+    llm_model: str = ""
+    llm_azure_endpoint: str = ""
+    llm_azure_auth: Literal["managed_identity", "workload_identity", "api_key"] = "managed_identity"
+    llm_azure_client_id: str = ""
+    llm_azure_api_key: str = Field(default="", repr=False)
+    llm_self_hosted_base_url: str = ""
+    llm_self_hosted_api_key: str = Field(default="", repr=False)
+    llm_allow_insecure_loopback: bool = False
+    llm_timeout_seconds: float = Field(default=20, gt=0, le=60)
+
+    @property
+    def approvers(self) -> set[str]:
+        return {value.strip() for value in self.teams_approvers.split(",") if value.strip()}
+
+
+@lru_cache
+def get_settings() -> Settings:
+    settings = Settings()
+    if settings.gitlab_token_file:
+        token = Path(settings.gitlab_token_file).read_text(encoding="utf-8").rstrip("\r\n")
+        if not token or token != token.strip():
+            raise RuntimeError("The GitLab token file is empty or contains surrounding whitespace")
+        settings.gitlab_token = token
+    return settings

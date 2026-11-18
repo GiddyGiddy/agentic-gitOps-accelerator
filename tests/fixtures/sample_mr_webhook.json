@@ -1,0 +1,5 @@
+{
+  "object_kind": "merge_request",
+  "project": {"id": 123},
+  "object_attributes": {"iid": 42, "target_branch": "master"}
+}

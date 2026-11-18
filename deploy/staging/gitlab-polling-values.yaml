@@ -1,0 +1,17 @@
+gitlabPoller:
+  enabled: true
+gitlabKeyVault:
+  enabled: true
+  vaultName: "kv-inventarmind-de4cc0"
+  secretName: "agentic-gitOps-token"
+  tenantId: "fd58bbca-b54d-436b-a7bc-3cb0e2c1181a"
+azureWorkloadIdentity:
+  enabled: true
+  clientId: "c43c6ea9-ec76-44c2-a58c-c4214ada755c"
+env:
+  GITOPS_GITLAB_URL: "https://gitlab.cgi-berlin.cloud"
+  GITOPS_GITLAB_POLL_PROJECT: "Gideon/agentic-project-timesheet-assistance"
+  GITOPS_GITLAB_POLL_SECONDS: "5"
+  GITOPS_GITLAB_WEBHOOK_ENABLED: "false"
+  GITOPS_WRITE_ENABLED: "false"
+  GITOPS_LLM_AZURE_AUTH: "workload_identity"

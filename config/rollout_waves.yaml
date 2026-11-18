@@ -1,0 +1,12 @@
+# Job names are exact allowlisted GitLab job names, not patterns.
+waves:
+  - name: wave1
+    jobs: [deploy_release_emea_vn_base]
+    approval_required: false
+  - name: wave2
+    jobs:
+      - deploy_release_emea_vbl
+      - deploy_release_emea_payfare
+      - deploy_release_emea_viseca
+      - deploy_release_na_payfare
+    approval_required: true

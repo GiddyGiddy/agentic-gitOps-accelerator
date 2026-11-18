@@ -1,0 +1,41 @@
+replicaCount: 1
+workerReplicaCount: 1
+gitlabPoller:
+  enabled: false
+gitlabKeyVault:
+  enabled: false
+  vaultName: ""
+  secretName: ""
+  tenantId: ""
+mcp:
+  enabled: false
+  replicaCount: 1
+  existingSecret: ""
+  allowedHosts: ""
+image:
+  repository: helix-gitops-agents
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+service:
+  port: 80
+serviceAccount:
+  name: agent-gitops-bot
+azureWorkloadIdentity:
+  enabled: false
+  clientId: ""
+existingSecret: gitops-agent-credentials
+env:
+  GITOPS_WRITE_ENABLED: "false"
+  GITOPS_CONFIG_DIR: "/app/config"
+  GITOPS_LLM_ENABLED: "true"
+  GITOPS_LLM_PROVIDER: "azure_openai"
+  GITOPS_LLM_AZURE_ENDPOINT: "https://gideon-3037-resource.openai.azure.com"
+  GITOPS_LLM_MODEL: "gpt-4.1-mini-timesheet"
+  GITOPS_LLM_AZURE_AUTH: "managed_identity"
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

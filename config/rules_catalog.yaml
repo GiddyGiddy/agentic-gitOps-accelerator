@@ -1,0 +1,7 @@
+# Adapt these examples to the paths and environments used by your repositories.
+deployment_prefix: deployment/
+protected_target: master
+release_branch_pattern: '^release/VN[0-9][A-Za-z0-9-]*$'
+release_environments: [qa2, ppd, demo]
+dev_environments: [dev, qa]
+forbidden_key: image.tag
