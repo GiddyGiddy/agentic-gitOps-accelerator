@@ -1,13 +1,9 @@
 # GitOps agent control plane
 
-A Python/FastAPI starting point for the requested event-driven supervisor and
-four GitOps workers. It integrates with GitLab™, Argo CD, and PostgreSQL using
+A Python/FastAPI multi-Agent system that add an intelligent control layer around existing GitLab CI, Harbor and Argo CD. It integrates with GitLab, Argo CD, and PostgreSQL using
 configurable example contracts. **This is not a production-ready release
 orchestrator.** No deployment should rely on it as a safety gate without
 completing and testing the items below against your actual systems.
-
-GITLAB is a trademark of GitLab Inc. in the United States and other countries
-and regions.
 
 ## Solution Architecture
 
@@ -27,24 +23,7 @@ does not replace them or write directly to workload clusters.
 | Bundles and rollback | Optional approved bundles support drift comparison. Rollback requires a separately authorized approval and enabled writes, and stages only a draft GitLab MR; it does not merge or deploy. |
 | Storage and integrations | PostgreSQL holds the inbox, ledger and checkpoints. Direct clients are the default; optional MCP servers expose read-only tools. Key Vault CSI supplies worker and poller secrets, while API credentials must be provisioned separately. |
 
-**Deployment status:** The diagram includes locally implemented optional
-features, not just what is deployed. The last confirmed AKS staging environment
-was stopped, and its image predates query, bundle and rollback functionality.
-Harbor and Argo CD integration and the newer workflows still require real
-end-to-end validation. The trusted identity gateway is external and has not
-been implemented. See [Important limitations](#important-limitations) before
-enabling any integration.
 
-The named agents are implemented as Python components. Currently LangGraph
-records event outcomes; it does **not** orchestrate these components as graph
-nodes. Azure OpenAI advisories for routing and reconciliation are separately
-optional and do not authorize actions.
-
-The diagram uses [Microsoft Azure architecture icons](https://learn.microsoft.com/en-us/azure/architecture/icons/)
-and official [Harbor](https://goharbor.io/) and [Argo CD](https://argo-cd.readthedocs.io/)
-project artwork. The GitLab integration uses a generic symbol because
-[GitLab's trademark guidelines](https://handbook.gitlab.com/handbook/marketing/brand-experience/trademark-guidelines/)
-restrict logo use.
 
 ## What works
 
@@ -787,74 +766,3 @@ over HTTPS. It does not configure ingress, TLS, database provisioning or network
 policy. Do not deploy it until those controls and the limitations above are
 addressed. The sample GitLab pipeline tests and builds an image but does not
 publish it.
-
-### AKS staging infrastructure
-
-The Terraform in `infra/` prepares a single-node AKS Free-tier cluster, three
-managed identities, the worker's federated credential and scoped role
-assignments for the existing Azure AI resource and ACR. It does not create
-the application, namespace, secrets, database, ingress, image or webhook
-gateway. The Terraform execution identity needs permission to create
-resources and role assignments at the relevant scopes. It must also have
-access to the selected subscription. Required Azure resource providers must
-already be registered; this configuration does not register them.
-
-Before provisioning:
-
-1. Confirm Azure subscription 1, Sweden Central, SKU availability, quota, and
-   the complete monthly cost. The single VM was priced at approximately
-   EUR 1.63 for 10 hours, but disks, the AKS standard load balancer and public
-   IP, registry, model requests and other charges continue separately. The
-   EUR 25 budget is not enforced automatically and may be exceeded.
-2. Set `ARM_SUBSCRIPTION_ID` in the local environment to the subscription ID
-   selected by `az account show --query id -o tsv`. Do not commit credentials.
-   Supply `authorized_ip_ranges` as a nonempty set of approved public IPv4
-   CIDRs through a protected `.tfvars` file or environment variable. The
-   cluster API rejects an unrestricted `0.0.0.0/0` input. Supply the approved
-   operator's Microsoft Entra user object ID as `operator_object_id` in the
-   same protected file. When the signed-in user is the approved operator, obtain
-   it with `az ad signed-in-user show --query id -o tsv`. This explicit value
-   must not silently change when Terraform runs under another identity.
-3. Run `terraform -chdir=infra init`, `terraform -chdir=infra validate`, and
-   `terraform -chdir=infra plan` with the approved CIDRs. Review the real plan,
-   roles, and cost before separately approving an apply. Terraform state can
-   contain sensitive data: protect and back it up, and use an encrypted remote
-   backend with access control and locking for shared use. The default local
-   backend is for isolated testing only.
-4. Local AKS accounts are disabled. Terraform plans a cluster-scoped Azure
-   Kubernetes Service RBAC Cluster Admin role for the specified operator.
-   The operator also needs permission to retrieve cluster user credentials
-   (for example Azure Kubernetes Service Cluster User); this is not assigned
-   by Terraform. Verify existing access before use. Use a separate kubeconfig
-   so shared contexts are not changed.
-
-The optional `deploy/staging/postgres.yaml` is a **test-only**, single-instance
-PostgreSQL StatefulSet with a persistent Azure disk and internal ClusterIP.
-Create the `gitops-staging` namespace and an externally managed
-`gitops-postgres-credentials` Secret with a `password` key before applying it.
-Create a separate `gitops-agent-credentials` Secret with a matching
-`GITOPS_DATABASE_URL` and the required webhook and integration credentials.
-Use synthetic data: this sample has no high availability, backup, database
-network policy, or TLS between pods. Namespace membership alone does not
-isolate the database. Configure and verify those controls before real data.
-Persistent disks retain charges while AKS is stopped.
-
-For an idle staging cluster, stop and later restart it with `az aks stop` and
-`az aks start`, specifying the configured resource group and cluster name.
-Stopping compute does not eliminate charges for retained disks, networking,
-or other Azure resources. Check the cluster power state before use.
-
-Publish the application image to ACR, run `gitops-migrate` once with the
-database connection, and then install the existing Helm chart. Set its
-`image.repository` and tag, `azureWorkloadIdentity.enabled=true`,
-`azureWorkloadIdentity.clientId` to the Terraform worker identity output,
-and `env.GITOPS_LLM_AZURE_AUTH=workload_identity`. The API and worker use the
-same external application Secret. Configure a trusted private ingress or
-tunnel separately; neither Terraform nor the chart exposes a webhook endpoint.
-Verify that the worker can reach Azure OpenAI and process a test event before
-relying on it.
-
-Stop and start the cluster with `az aks stop` and `az aks start` when not
-testing. Stopping does not remove disks, public networking or other charges,
-and webhooks cannot arrive during downtime. No scheduling or spending cap is
-included. The sample is not a production or disaster-recovery architecture.
