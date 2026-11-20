@@ -111,7 +111,14 @@ def test_self_hosted_adapter_and_input_validation(monkeypatch):
 
 
 @pytest.mark.parametrize("auth", ["managed_identity", "workload_identity"])
-def test_azure_identity_provider_is_explicit(auth, monkeypatch):
+@pytest.mark.parametrize(
+    ("endpoint", "expected_scope"),
+    [
+        ("https://example.openai.azure.com", "https://cognitiveservices.azure.com/.default"),
+        ("https://example.services.ai.azure.com", "https://ai.azure.com/.default"),
+    ],
+)
+def test_azure_identity_provider_is_explicit(auth, endpoint, expected_scope, monkeypatch):
     calls = []
 
     class Credential:
@@ -129,11 +136,11 @@ def test_azure_identity_provider_is_explicit(auth, monkeypatch):
         return lambda: "test-token"
 
     monkeypatch.setattr("app.llm.providers.get_bearer_token_provider", token_provider)
-    settings = Settings(llm_azure_endpoint="https://example.openai.azure.com", llm_model="deployment",
+    settings = Settings(llm_azure_endpoint=endpoint, llm_model="deployment",
                         llm_azure_auth=auth, llm_azure_client_id="client-id")
     provider = create_provider(settings)
     provider.close()
-    assert ("scope", "https://ai.azure.com/.default") in calls
+    assert ("scope", expected_scope) in calls
     assert calls[-1] == ("closed",)
     if auth == "managed_identity":
         assert calls[0] == ("credential", {"client_id": "client-id"})

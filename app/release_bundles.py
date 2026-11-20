@@ -415,7 +415,9 @@ def compare_bundle(factory: sessionmaker[Session], settings: Settings, fingerpri
     if env is None:
         raise BundleError(404, "Application is not included in the bundle")
     validate_url(settings.argocd_url, azure=False)
-    client = ArgoCDClient(settings.argocd_url, settings.argocd_token)
+    client = ArgoCDClient(
+        settings.argocd_url, settings.argocd_token, settings.argocd_ca_cert_file
+    )
     try:
         app = client.application(application)
     finally:

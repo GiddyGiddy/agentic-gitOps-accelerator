@@ -269,7 +269,9 @@ def _deployed_version(settings: Settings, application: str, projects: set[str],
                       *, app_data: dict | None = None) -> DeployedVersionResponse:
     app = app_data
     if app is None:
-        client = ArgoCDClient(settings.argocd_url, settings.argocd_token)
+        client = ArgoCDClient(
+            settings.argocd_url, settings.argocd_token, settings.argocd_ca_cert_file
+        )
         try:
             app = client.application(application)
         finally:

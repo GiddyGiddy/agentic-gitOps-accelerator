@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  accounts.gitops-agent: apiKey
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  policy.default: role:agent-default
+  policy.csv: |
+    p, role:gitops-agent-readonly, applications, get, agentic-gitops-accelerator/*, allow
+    g, gitops-agent, role:gitops-agent-readonly
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: agentic-gitops-accelerator
+  namespace: argocd
+spec:
+  description: Read-only Argo CD scope for the GitOps control plane
+  sourceRepos: []
+  destinations: []
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist: []

@@ -24,7 +24,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agents
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "helix-gitops-agents.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: 8000
@@ -32,6 +32,10 @@ spec:
             - secretRef:
                 name: {{ .Values.existingSecret }}
           env:
+            {{- if .Values.argocdTLS.caConfigMap }}
+            - name: GITOPS_ARGOCD_CA_CERT_FILE
+              value: {{ printf "/mnt/argocd-ca/%s" .Values.argocdTLS.caKey | quote }}
+            {{- end }}
             {{- if .Values.uiKeyVault.enabled }}
             - name: GITOPS_UI_ENTRA_CLIENT_SECRET_FILE
               value: /mnt/ui-secret/client-secret
@@ -53,20 +57,37 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-          {{- if .Values.uiKeyVault.enabled }}
+          {{- if or .Values.uiKeyVault.enabled .Values.argocdTLS.caConfigMap }}
           volumeMounts:
+            {{- if .Values.argocdTLS.caConfigMap }}
+            - name: argocd-ca
+              mountPath: /mnt/argocd-ca
+              readOnly: true
+            {{- end }}
+            {{- if .Values.uiKeyVault.enabled }}
             - name: ui-secret
               mountPath: /mnt/ui-secret
               readOnly: true
+            {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.uiKeyVault.enabled }}
+      {{- if or .Values.uiKeyVault.enabled .Values.argocdTLS.caConfigMap }}
       volumes:
+        {{- if .Values.argocdTLS.caConfigMap }}
+        - name: argocd-ca
+          configMap:
+            name: {{ .Values.argocdTLS.caConfigMap }}
+            items:
+              - key: {{ .Values.argocdTLS.caKey | quote }}
+                path: {{ .Values.argocdTLS.caKey | quote }}
+        {{- end }}
+        {{- if .Values.uiKeyVault.enabled }}
         - name: ui-secret
           csi:
             driver: secrets-store.csi.k8s.io
             readOnly: true
             volumeAttributes:
               secretProviderClass: {{ .Release.Name }}-ui-secret
+        {{- end }}
       {{- end }}

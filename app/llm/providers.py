@@ -106,7 +106,8 @@ def create_provider(settings: Settings) -> AdvisoryProvider:
     credential: ManagedIdentityCredential | WorkloadIdentityCredential | None = None
     api_key: str | Callable[[], str]
     if settings.llm_provider == "azure_openai":
-        base_url = validate_url(settings.llm_azure_endpoint, azure=True) + "/openai/v1/"
+        azure_endpoint = validate_url(settings.llm_azure_endpoint, azure=True)
+        base_url = azure_endpoint + "/openai/v1/"
         if settings.llm_azure_auth == "api_key":
             if not settings.llm_azure_api_key:
                 raise ValueError("Azure OpenAI API key is required")
@@ -116,7 +117,13 @@ def create_provider(settings: Settings) -> AdvisoryProvider:
                 credential = WorkloadIdentityCredential()
             else:
                 credential = ManagedIdentityCredential(client_id=settings.llm_azure_client_id or None)
-            api_key = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
+            endpoint_host = urlsplit(azure_endpoint).hostname
+            token_scope = (
+                "https://cognitiveservices.azure.com/.default"
+                if endpoint_host and endpoint_host.endswith(".openai.azure.com")
+                else "https://ai.azure.com/.default"
+            )
+            api_key = get_bearer_token_provider(credential, token_scope)
     else:
         base_url = validate_url(
             settings.llm_self_hosted_base_url, azure=False, allow_loopback=settings.llm_allow_insecure_loopback

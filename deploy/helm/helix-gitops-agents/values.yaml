@@ -7,6 +7,9 @@ gitlabKeyVault:
   vaultName: ""
   secretName: ""
   tenantId: ""
+argocdTLS:
+  caConfigMap: ""
+  caKey: ca.crt
 uiKeyVault:
   enabled: false
   vaultName: ""
@@ -22,6 +25,7 @@ mcp:
 image:
   repository: helix-gitops-agents
   tag: "0.1.0"
+  digest: ""
   pullPolicy: IfNotPresent
 service:
   port: 80

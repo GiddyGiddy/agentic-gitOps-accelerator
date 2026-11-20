@@ -1,0 +1,60 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: argocd-root-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-internal-root
+  namespace: argocd
+spec:
+  isCA: true
+  commonName: argocd-internal-root
+  secretName: argocd-internal-root
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: argocd-root-selfsigned
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: argocd-internal-ca
+  namespace: argocd
+spec:
+  ca:
+    secretName: argocd-internal-root
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  secretName: argocd-server-tls
+  duration: 2160h
+  renewBefore: 360h
+  dnsNames:
+    - argocd-server
+    - argocd-server.argocd
+    - argocd-server.argocd.svc
+    - argocd-server.argocd.svc.cluster.local
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+  issuerRef:
+    name: argocd-internal-ca
+    kind: Issuer
+    group: cert-manager.io

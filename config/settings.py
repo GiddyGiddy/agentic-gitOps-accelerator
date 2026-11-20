@@ -28,7 +28,8 @@ class Settings(BaseSettings):
     traceability_jira_prefixes: str = ""
     traceability_patch_directory: str = "chart-patch-files"
     argocd_url: str = ""
-    argocd_token: str = ""
+    argocd_token: str = Field(default="", repr=False)
+    argocd_ca_cert_file: str = ""
     argocd_webhook_secret: str = ""
     harbor_url: str = ""
     harbor_username: str = ""

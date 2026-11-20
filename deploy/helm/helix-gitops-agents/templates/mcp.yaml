@@ -22,7 +22,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mcp
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "helix-gitops-agents.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["gitops-mcp"]
           ports:

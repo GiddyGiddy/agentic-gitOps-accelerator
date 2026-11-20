@@ -100,7 +100,9 @@ def handle_event(session: Session, item: InboxEvent, settings: Settings) -> dict
                     )
                 finally:
                     gitlab.close()
-                argocd = ArgoCDClient(settings.argocd_url, settings.argocd_token)
+                argocd = ArgoCDClient(
+                    settings.argocd_url, settings.argocd_token, settings.argocd_ca_cert_file
+                )
                 try:
                     applications = [argocd.application(entry.application) for entry in deployments]
                 finally:

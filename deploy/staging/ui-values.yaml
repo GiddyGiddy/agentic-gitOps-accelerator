@@ -3,7 +3,10 @@ uiKeyVault:
   vaultName: kv-inventarmind-de4cc0
   secretName: AgenticGitOps-secret
   tenantId: fd58bbca-b54d-436b-a7bc-3cb0e2c1181a
+argocdTLS:
+  caConfigMap: argocd-ca-bundle
 env:
+  GITOPS_ARGOCD_URL: "https://argocd-server.argocd.svc.cluster.local"
   GITOPS_UI_ENABLED: "true"
   GITOPS_UI_PUBLIC_ORIGIN: "https://agegitops.giddyitsolutions.com"
   GITOPS_UI_ENTRA_TENANT_ID: "fd58bbca-b54d-436b-a7bc-3cb0e2c1181a"

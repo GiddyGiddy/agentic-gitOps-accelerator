@@ -102,7 +102,9 @@ def create_app(settings: Settings) -> Starlette:
         """Read an Argo CD Application."""
         if not name:
             raise ValueError("Application name is required")
-        client = ArgoCDClient(settings.argocd_url, settings.argocd_token)
+        client = ArgoCDClient(
+            settings.argocd_url, settings.argocd_token, settings.argocd_ca_cert_file
+        )
         try:
             return {"application": client.application(name)}
         finally:
