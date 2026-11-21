@@ -101,6 +101,49 @@ To use polling instead of GitLab webhooks, configure `GITOPS_GITLAB_URL`,
 start `.\.venv\Scripts\gitops-gitlab-poller.exe` in another terminal. Its first
 snapshot establishes a baseline rather than replaying existing MRs and tags.
 
+## GitHub Actions CI and image publication
+
+[The CI workflow](./.github/workflows/ci.yml) runs on pull requests and pushes
+to `main`. It tests Python 3.11 and 3.12 against an isolated PostgreSQL 16
+service, checks console JavaScript, lints the default Helm chart, and lints and
+renders its staging overlays. Pull requests also build the container without
+publishing it or accessing Azure credentials.
+
+After the checks pass on a push to `main`, the workflow builds and publishes
+`<registry>/agentic-gitops-staging:<commit-sha>` to ACR. It records the
+immutable image digest and commit in the job summary and an `image-digest-*`
+workflow artifact. Use the digest, not the mutable tag, for a future GitOps
+deployment. This workflow does not modify GitOps configuration, deploy to
+AKS, start or stop the cluster, or run database migrations.
+
+Before enabling publication:
+
+1. Create a dedicated Azure identity and GitHub OIDC federated credential,
+   restricted to this repository's `main` branch. Match the actual OIDC subject
+   format configured for your GitHub repository. Give it only the registry
+   access needed to read the ACR metadata and push images, such as scoped
+   `Reader` and `AcrPush` roles on an RBAC-mode registry.
+2. Set GitHub repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+   `AZURE_SUBSCRIPTION_ID` (the subscription containing the registry), and
+   `ACR_NAME` (the registry name, not its login-server URL). These identifiers
+   are not passwords; do not create or store a client secret for OIDC.
+3. Protect `main` with pull-request review and required CI checks. Configure
+   registry permissions and identity separately; the workflow does not
+   provision Azure resources.
+
+The staging setup uses the `gitops-github-actions-publisher` managed identity
+with an immutable GitHub OIDC subject for `main` and registry-scoped `Reader`
+and `AcrPush` roles on the existing ACR. In legacy registry-permissions mode,
+`AcrPush` permits pushes to **all** repositories in that registry. Protect
+`main` before relying on this setup; it currently has no branch protection.
+Pull-request checks do not test image publication; verify it after the workflow
+reaches `main`.
+
+If publication is not configured, the `main` publish job fails explicitly;
+pull-request checks do not require Azure access. Image digests are retained only
+as long as the workflow run and artifact are retained. GitOps promotion and
+Argo CD deployment are separate future steps and remain subject to review.
+
 ## Configuration
 
 All settings use the `GITOPS_` prefix. See `config/settings.py` for defaults.
