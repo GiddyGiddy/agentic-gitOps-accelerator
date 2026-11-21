@@ -136,7 +136,8 @@ with an immutable GitHub OIDC subject for `main` and registry-scoped `Reader`
 and `AcrPush` roles on the existing ACR. In legacy registry-permissions mode,
 `AcrPush` permits pushes to **all** repositories in that registry. Protect
 `main` before relying on this setup; it currently has no branch protection.
-The workflow and image publication have not yet been run on GitHub.
+Pull-request checks do not test image publication; verify it after the workflow
+reaches `main`.
 
 If publication is not configured, the `main` publish job fails explicitly;
 pull-request checks do not require Azure access. Image digests are retained only
