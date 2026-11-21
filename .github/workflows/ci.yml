@@ -69,6 +69,16 @@ jobs:
             --set-string "image.digest=$digest" > "$RUNNER_TEMP/staging.yaml"
           grep -Fq 'name: helix-gitlab-poller' "$RUNNER_TEMP/staging.yaml"
           grep -Fq "example.azurecr.io/agentic-gitops-staging@$digest" "$RUNNER_TEMP/staging.yaml"
+          grep -A4 'name: GITOPS_UI_ALLOWED_USERS' "$RUNNER_TEMP/staging.yaml" |
+            grep -Fq 'name: "gitops-console-allowlist"'
+          if helm template helix "$chart" "${values[@]}" \
+            --set-string "uiKeyVault.clientId=$client_id" \
+            --set-string env.GITOPS_UI_ALLOWED_USERS=test \
+            > /dev/null 2> "$RUNNER_TEMP/helm-error.txt"; then
+            echo "::error::Conflicting console allowlist sources were accepted."
+            exit 1
+          fi
+          grep -Fq 'Set GITOPS_UI_ALLOWED_USERS in either env or uiAllowedUsersSecret, not both' "$RUNNER_TEMP/helm-error.txt"
 
   pull-request-image:
     name: Build pull request image

@@ -17,6 +17,7 @@ uiKeyVault:
   tenantId: ""
   clientId: ""
   serviceAccountName: gitops-console
+uiAllowedUsersSecret: ""
 mcp:
   enabled: false
   replicaCount: 1

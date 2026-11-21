@@ -40,6 +40,16 @@ spec:
             - name: GITOPS_UI_ENTRA_CLIENT_SECRET_FILE
               value: /mnt/ui-secret/client-secret
             {{- end }}
+            {{- if .Values.uiAllowedUsersSecret }}
+            {{- if hasKey .Values.env "GITOPS_UI_ALLOWED_USERS" }}
+            {{- fail "Set GITOPS_UI_ALLOWED_USERS in either env or uiAllowedUsersSecret, not both" }}
+            {{- end }}
+            - name: GITOPS_UI_ALLOWED_USERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.uiAllowedUsersSecret | quote }}
+                  key: GITOPS_UI_ALLOWED_USERS
+            {{- end }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
