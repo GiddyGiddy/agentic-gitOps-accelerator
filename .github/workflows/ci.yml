@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python }} and PostgreSQL
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12']
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: gitops_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gitops_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GITOPS_TEST_DATABASE_URL: postgresql+psycopg://postgres:ci-test-only@127.0.0.1:5432/gitops_ci
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install project and test dependencies
+        run: python -m pip install ".[test]"
+      - name: Run tests
+        run: python -m pytest -q
+      - name: Check console JavaScript syntax
+        run: node --check app/ui_static/app.js
+
+  helm:
+    name: Helm validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a # v4
+        with:
+          version: v3.21.4
+      - name: Lint default chart
+        run: helm lint deploy/helm/helix-gitops-agents
+      - name: Lint and render staging overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/helix-gitops-agents
+          values=(-f deploy/staging/ui-values.yaml -f deploy/staging/gitlab-polling-values.yaml)
+          client_id=00000000-0000-0000-0000-000000000000
+          digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          helm lint "$chart" "${values[@]}" --set-string "uiKeyVault.clientId=$client_id"
+          helm template helix "$chart" "${values[@]}" \
+            --set-string "uiKeyVault.clientId=$client_id" \
+            --set-string image.repository=example.azurecr.io/agentic-gitops-staging \
+            --set-string "image.digest=$digest" > "$RUNNER_TEMP/staging.yaml"
+          grep -Fq 'name: helix-gitlab-poller' "$RUNNER_TEMP/staging.yaml"
+          grep -Fq "example.azurecr.io/agentic-gitops-staging@$digest" "$RUNNER_TEMP/staging.yaml"
+
+  pull-request-image:
+    name: Build pull request image
+    if: github.event_name == 'pull_request'
+    needs: [tests, helm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: false
+
+  publish:
+    name: Publish image to ACR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tests, helm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ACR_NAME: ${{ vars.ACR_NAME }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate registry configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID ACR_NAME; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Repository variable $name is required for ACR publication."
+              exit 1
+            fi
+          done
+          if [[ ! "$ACR_NAME" =~ ^[a-zA-Z0-9]{5,50}$ ]]; then
+            echo "::error::ACR_NAME must be an Azure Container Registry name."
+            exit 1
+          fi
+      - uses: azure/login@8216e11d8cd9b42fe925c852af8e76311ff067ac # v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Authenticate to ACR
+        id: registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          server=$(az acr show --name "$ACR_NAME" --query loginServer --output tsv)
+          if [[ ! "$server" =~ ^[a-zA-Z0-9-]+\.azurecr\.io$ ]]; then
+            echo "::error::Azure returned an invalid ACR login server."
+            exit 1
+          fi
+          az acr login --name "$ACR_NAME"
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and push image
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.registry.outputs.server }}/agentic-gitops-staging:${{ github.sha }}
+      - name: Record published digest
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.registry.outputs.server }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Image publication did not return a valid SHA-256 digest."
+            exit 1
+          fi
+          printf 'Image: %s/agentic-gitops-staging@%s\nCommit: %s\n' \
+            "$REGISTRY" "$DIGEST" "$COMMIT_SHA" > image-digest.txt
+          cat image-digest.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-digest-${{ github.sha }}
+          path: image-digest.txt
+          if-no-files-found: error
