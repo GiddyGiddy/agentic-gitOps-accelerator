@@ -169,6 +169,12 @@ Important variables:
 | `UI_ALLOWED_USERS` | Comma-separated Entra object IDs authorized to sign in |
 
 For example, `DATABASE_URL` above is supplied as `GITOPS_DATABASE_URL`.
+For Helm deployments, `uiAllowedUsersSecret` can name an externally managed
+Kubernetes Secret in the release namespace containing the key
+`GITOPS_UI_ALLOWED_USERS`. The staging overlay uses `gitops-console-allowlist`;
+create it before deploying and restrict access to it. Do not also set that
+variable in Helm `env`. Changing the Secret requires an API pod restart to
+pick up the new value. The identifiers and credentials do not belong in Git.
 GitLab and Argo CD API URLs must use HTTPS. Configure least-privilege GitLab
 and Argo CD credentials and restrict the ingress to the intended sources.
 Routing and rollout YAML are illustrative; adapt both and rebuild the image.
