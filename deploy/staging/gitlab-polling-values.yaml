@@ -10,7 +10,7 @@ azureWorkloadIdentity:
   clientId: "c43c6ea9-ec76-44c2-a58c-c4214ada755c"
 env:
   GITOPS_GITLAB_URL: "https://gitlab.cgi-berlin.cloud"
-  GITOPS_GITLAB_POLL_PROJECT: "Gideon/agentic-project-timesheet-assistance"
+  GITOPS_GITLAB_POLL_PROJECT: "Gideon/agentic-gitOps-accelerator"
   GITOPS_GITLAB_POLL_SECONDS: "5"
   GITOPS_GITLAB_BUILD_POLL_ENABLED: "true"
   GITOPS_GITLAB_BUILD_POLL_SECONDS: "60"
