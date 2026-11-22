@@ -79,6 +79,23 @@ jobs:
             exit 1
           fi
           grep -Fq 'Set GITOPS_UI_ALLOWED_USERS in either env or uiAllowedUsersSecret, not both' "$RUNNER_TEMP/helm-error.txt"
+      - name: Validate GitOps staging values
+        shell: bash
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/helix-gitops-agents
+          values=(-f deploy/staging/ui-values.yaml -f deploy/staging/gitlab-polling-values.yaml -f deploy/staging/gitops-values.yaml)
+          helm lint "$chart" "${values[@]}"
+          helm template helix "$chart" --namespace gitops-staging "${values[@]}" > "$RUNNER_TEMP/gitops-staging.yaml"
+          digest=$(awk '$1 == "digest:" {print $2}' deploy/staging/gitops-values.yaml)
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::GitOps staging image digest is invalid."
+            exit 1
+          fi
+          if [[ $(grep -Fc "inventarmindde4cc0.azurecr.io/agentic-gitops-staging@$digest" "$RUNNER_TEMP/gitops-staging.yaml") -ne 3 ]]; then
+            echo "::error::API, worker and poller must use the pinned image."
+            exit 1
+          fi
 
   pull-request-image:
     name: Build pull request image

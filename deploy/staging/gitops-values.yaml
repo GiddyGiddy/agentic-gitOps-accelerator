@@ -1,0 +1,5 @@
+image:
+  repository: inventarmindde4cc0.azurecr.io/agentic-gitops-staging
+  digest: sha256:cca7e76d483c67132aa1244462766d4873d95351d17846d0e0e30e7d76a7aeff
+uiKeyVault:
+  clientId: 31ec0eca-606b-4f06-9220-5a5cad33feea
