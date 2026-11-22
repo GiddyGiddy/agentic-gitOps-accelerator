@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: helix-staging
+  namespace: argocd
+spec:
+  description: Staging control-plane deployment
+  sourceRepos:
+    - https://github.com/GiddyGiddy/agentic-gitOps-accelerator.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: gitops-staging
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: Service
+    - group: apps
+      kind: Deployment
+    - group: secrets-store.csi.x-k8s.io
+      kind: SecretProviderClass
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: helix
+  namespace: argocd
+spec:
+  project: helix-staging
+  source:
+    repoURL: https://github.com/GiddyGiddy/agentic-gitOps-accelerator.git
+    targetRevision: main
+    path: deploy/helm/helix-gitops-agents
+    helm:
+      releaseName: helix
+      valueFiles:
+        - ../../staging/ui-values.yaml
+        - ../../staging/gitlab-polling-values.yaml
+        - ../../staging/gitops-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitops-staging
+  syncPolicy:
+    syncOptions:
+      - Prune=false
+      - FailOnSharedResource=true
