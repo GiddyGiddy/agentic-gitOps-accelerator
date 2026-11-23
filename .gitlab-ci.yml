@@ -1,3 +1,10 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - when: always
+
 stages:
   - test
   - build
@@ -10,12 +17,13 @@ test:
     - pytest -q
 
 build:
-  image: docker:27-cli
+  image:
+    name: moby/buildkit:v0.20.2-rootless
+    entrypoint: [""]
   stage: build
-  services:
-    - docker:27-dind
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+    BUILDKITD_FLAGS: "--oci-worker-no-process-sandbox"
   script:
-    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+    - buildctl-daemonless.sh build --frontend dockerfile.v0 --local context=. --local dockerfile=. --output "type=image,name=agentic-gitops-agents:$CI_COMMIT_SHA,push=false"
     - echo "Built image; configure registry login and an approved push policy before publishing."
+
