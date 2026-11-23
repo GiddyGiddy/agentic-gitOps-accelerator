@@ -1,0 +1,7 @@
+harborKeyVault:
+  enabled: true
+  vaultName: "kv-inventarmind-de4cc0"
+  secretName: "harbor-staging-reader-password"
+  tenantId: "fd58bbca-b54d-436b-a7bc-3cb0e2c1181a"
+  url: "https://harbor.giddyitsolutions.com"
+  username: "robot$charts+gitops-reader"

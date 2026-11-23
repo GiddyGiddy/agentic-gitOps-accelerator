@@ -105,6 +105,12 @@ variable "harbor_key_vault_enabled" {
   default     = false
 }
 
+variable "harbor_worker_key_vault_enabled" {
+  description = "Grant the worker access to the Harbor read-only robot credential."
+  type        = bool
+  default     = false
+}
+
 variable "harbor_key_vault_name" {
   description = "Existing Key Vault name containing Harbor credentials."
   type        = string

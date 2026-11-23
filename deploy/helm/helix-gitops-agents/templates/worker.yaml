@@ -39,6 +39,14 @@ spec:
             - name: GITOPS_GITLAB_TOKEN_FILE
               value: /mnt/gitlab-token/gitlab-token
             {{- end }}
+            {{- if .Values.harborKeyVault.enabled }}
+            - name: GITOPS_HARBOR_URL
+              value: {{ required "harborKeyVault.url is required" .Values.harborKeyVault.url | quote }}
+            - name: GITOPS_HARBOR_USERNAME
+              value: {{ required "harborKeyVault.username is required" .Values.harborKeyVault.username | quote }}
+            - name: GITOPS_HARBOR_PASSWORD_FILE
+              value: /mnt/harbor-reader/password
+            {{- end }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -48,7 +56,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-          {{- if or (.Values.gitlabKeyVault | default dict).enabled .Values.argocdTLS.caConfigMap }}
+          {{- if or (.Values.gitlabKeyVault | default dict).enabled .Values.argocdTLS.caConfigMap .Values.harborKeyVault.enabled }}
           volumeMounts:
             {{- if .Values.argocdTLS.caConfigMap }}
             - name: argocd-ca
@@ -60,10 +68,15 @@ spec:
               mountPath: /mnt/gitlab-token
               readOnly: true
             {{- end }}
+            {{- if .Values.harborKeyVault.enabled }}
+            - name: harbor-reader
+              mountPath: /mnt/harbor-reader
+              readOnly: true
+            {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if or (.Values.gitlabKeyVault | default dict).enabled .Values.argocdTLS.caConfigMap }}
+      {{- if or (.Values.gitlabKeyVault | default dict).enabled .Values.argocdTLS.caConfigMap .Values.harborKeyVault.enabled }}
       volumes:
         {{- if .Values.argocdTLS.caConfigMap }}
         - name: argocd-ca
@@ -80,5 +93,13 @@ spec:
             readOnly: true
             volumeAttributes:
               secretProviderClass: {{ .Release.Name }}-gitlab-token
+        {{- end }}
+        {{- if .Values.harborKeyVault.enabled }}
+        - name: harbor-reader
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Release.Name }}-harbor-reader
         {{- end }}
       {{- end }}
