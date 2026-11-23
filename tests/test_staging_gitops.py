@@ -1,12 +1,16 @@
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from uuid import UUID
 
+import pytest
 import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGING = ROOT / "deploy" / "staging"
+CHART = ROOT / "deploy" / "helm" / "helix-gitops-agents"
 
 
 def _read_yaml(path):
@@ -58,3 +62,67 @@ def test_staging_application_uses_existing_overlays_and_digest():
     gitops_values = _read_yaml(values[2])
     assert re.fullmatch(r"sha256:[0-9a-f]{64}", gitops_values["image"]["digest"])
     assert UUID(gitops_values["uiKeyVault"]["clientId"]).int != 0
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_default_chart_does_not_mount_query_credentials():
+    result = subprocess.run(["helm", "template", "helix", str(CHART)], capture_output=True, text=True, check=True)
+    resources = [item for item in yaml.safe_load_all(result.stdout) if item]
+    api = next(item for item in resources if item["kind"] == "Deployment" and item["metadata"]["name"] == "helix-agents")
+    api_env = {item["name"] for item in api["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "GITOPS_QUERY_SECRET" not in api_env
+    assert "GITOPS_GITLAB_TOKEN_FILE" not in api_env
+    assert not any(item["kind"] == "SecretProviderClass" for item in resources)
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_staging_query_uses_console_identity_and_dedicated_secret():
+    command = ["helm", "template", "helix", str(CHART)]
+    for name in ("ui-values.yaml", "gitlab-polling-values.yaml", "gitops-values.yaml"):
+        command.extend(["-f", str(STAGING / name)])
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    resources = [item for item in yaml.safe_load_all(result.stdout) if item]
+    api = next(item for item in resources if item["kind"] == "Deployment" and item["metadata"]["name"] == "helix-agents")
+    worker = next(item for item in resources if item["kind"] == "Deployment" and item["metadata"]["name"] == "helix-worker")
+    providers = {
+        item["metadata"]["name"]: item for item in resources if item["kind"] == "SecretProviderClass"
+    }
+    api_spec = api["spec"]["template"]["spec"]
+    api_container = api_spec["containers"][0]
+    api_env = {item["name"]: item for item in api_container["env"]}
+    worker_env = {item["name"] for item in worker["spec"]["template"]["spec"]["containers"][0]["env"]}
+    api_volumes = {item["name"]: item for item in api_spec["volumes"]}
+    values = _read_yaml(STAGING / "gitops-values.yaml")
+
+    assert api_env["GITOPS_QUERY_ENABLED"]["value"] == "true"
+    assert api_env["GITOPS_QUERY_PROJECTS"]["value"] == "Gideon/agentic-gitOps-accelerator"
+    assert api_env["GITOPS_QUERY_APPLICATIONS"]["value"] == "helix"
+    assert api_env["GITOPS_QUERY_SECRET"]["valueFrom"]["secretKeyRef"] == {
+        "name": "gitops-query-secret", "key": "GITOPS_QUERY_SECRET",
+    }
+    assert "GITOPS_QUERY_SECRET" not in worker_env
+    assert api_env["GITOPS_GITLAB_TOKEN_FILE"]["value"] == "/mnt/gitlab-token/gitlab-token"
+    assert api_volumes["gitlab-token"]["csi"]["volumeAttributes"]["secretProviderClass"] == "helix-api-gitlab-token"
+    assert providers["helix-api-gitlab-token"]["spec"]["parameters"]["clientID"] == values["uiKeyVault"]["clientId"]
+    assert providers["helix-gitlab-token"]["spec"]["parameters"]["clientID"] != values["uiKeyVault"]["clientId"]
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_api_gitlab_mount_rejects_missing_identity_prerequisites():
+    result = subprocess.run(
+        ["helm", "template", "helix", str(CHART), "--set", "apiGitlabKeyVault.enabled=true"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "apiGitlabKeyVault requires gitlabKeyVault.enabled and uiKeyVault.enabled" in result.stderr
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_query_secret_rejects_conflicting_sources():
+    result = subprocess.run(
+        ["helm", "template", "helix", str(CHART), "--set", "querySecret=external",
+         "--set", "env.GITOPS_QUERY_SECRET=conflict"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "Set GITOPS_QUERY_SECRET in either env or querySecret, not both" in result.stderr

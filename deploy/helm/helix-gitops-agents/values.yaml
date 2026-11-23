@@ -7,6 +7,8 @@ gitlabKeyVault:
   vaultName: ""
   secretName: ""
   tenantId: ""
+apiGitlabKeyVault:
+  enabled: false
 argocdTLS:
   caConfigMap: ""
   caKey: ca.crt
@@ -18,6 +20,7 @@ uiKeyVault:
   clientId: ""
   serviceAccountName: gitops-console
 uiAllowedUsersSecret: ""
+querySecret: ""
 mcp:
   enabled: false
   replicaCount: 1
