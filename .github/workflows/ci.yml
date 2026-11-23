@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           chart=deploy/helm/helix-gitops-agents
-          values=(-f deploy/staging/ui-values.yaml -f deploy/staging/gitlab-polling-values.yaml -f deploy/staging/gitops-values.yaml)
+          values=(-f deploy/staging/ui-values.yaml -f deploy/staging/gitlab-polling-values.yaml -f deploy/staging/gitops-values.yaml -f deploy/staging/harbor-reader-values.yaml)
           helm lint "$chart" "${values[@]}"
           helm template helix "$chart" --namespace gitops-staging "${values[@]}" > "$RUNNER_TEMP/gitops-staging.yaml"
           digest=$(awk '$1 == "digest:" {print $2}' deploy/staging/gitops-values.yaml)
