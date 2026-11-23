@@ -286,6 +286,17 @@ Unsupported or ambiguous wording is rejected.
    The console authenticates users and enforces origin and CSRF checks. An
    external caller can instead use `POST /queries` with `X-Query-Secret`.
 
+The staging overlay enables queries for its explicitly listed GitLab project
+and Argo CD application. Before syncing it, provision the externally managed
+`gitops-query-secret` Kubernetes Secret with a distinct `GITOPS_QUERY_SECRET`
+key, and grant the dedicated console identity access to the GitLab token secret
+and Azure OpenAI model. The Terraform `console_query_enabled` option prepares
+those narrowly scoped roles when the console and GitLab Key Vault integrations
+are enabled. The chart's `apiGitlabKeyVault.enabled` mounts the GitLab token
+using the console identity; `querySecret` references the separate query Secret.
+Neither secret belongs in Helm values or Git. With CSI rotation disabled,
+restart the API after rotating its mounted GitLab token.
+
 **Limitations:** Chart-version resolution requires a single-source Argo CD
 application with a reconciliation no more than five minutes old, `Synced`
 status, and matching latest deployment-history revision and source. Missing,

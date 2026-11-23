@@ -178,6 +178,38 @@ resource "azurerm_role_assignment" "ui_secret_user" {
   }
 }
 
+resource "azurerm_role_assignment" "console_gitlab_secret_user" {
+  count = var.console_query_enabled ? 1 : 0
+
+  scope                = "${local.existing_scope}/Microsoft.KeyVault/vaults/${var.gitlab_key_vault_name}/secrets/${var.gitlab_key_vault_secret_name}"
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = try(azurerm_user_assigned_identity.console[0].principal_id, "")
+  principal_type       = "ServicePrincipal"
+
+  lifecycle {
+    precondition {
+      condition     = var.ui_key_vault_enabled && var.gitlab_key_vault_enabled
+      error_message = "Console queries require the dedicated console identity and GitLab Key Vault configuration."
+    }
+  }
+}
+
+resource "azurerm_role_assignment" "console_model_user" {
+  count = var.console_query_enabled ? 1 : 0
+
+  scope                = local.model_id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = try(azurerm_user_assigned_identity.console[0].principal_id, "")
+  principal_type       = "ServicePrincipal"
+
+  lifecycle {
+    precondition {
+      condition     = var.ui_key_vault_enabled && var.gitlab_key_vault_enabled
+      error_message = "Console queries require the dedicated console identity and GitLab Key Vault configuration."
+    }
+  }
+}
+
 resource "azapi_update_resource" "ui_gateway" {
   count       = var.ui_public_gateway_enabled ? 1 : 0
   type        = "Microsoft.ContainerService/managedClusters@2026-03-01"

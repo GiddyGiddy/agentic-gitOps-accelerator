@@ -117,6 +117,12 @@ variable "ui_service_account_name" {
   default     = "gitops-console"
 }
 
+variable "console_query_enabled" {
+  description = "Grant the dedicated console identity read access to GitLab credentials and the model for queries."
+  type        = bool
+  default     = false
+}
+
 variable "ui_public_gateway_enabled" {
   description = "Enable the managed Gateway API and a public IP for the staging console."
   type        = bool

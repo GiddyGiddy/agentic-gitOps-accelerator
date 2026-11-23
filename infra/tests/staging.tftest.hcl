@@ -45,6 +45,7 @@ run "secure_cluster_configuration" {
     ui_key_vault_enabled         = true
     ui_key_vault_name            = "test-vault"
     ui_key_vault_secret_name     = "console-secret"
+    console_query_enabled        = true
     ui_public_gateway_enabled    = true
     ui_public_dns_label          = "test-gitops-console"
   }
@@ -95,12 +96,51 @@ run "secure_cluster_configuration" {
 
   assert {
     condition = (
+      azurerm_role_assignment.console_gitlab_secret_user[0].role_definition_name == "Key Vault Secrets User" &&
+      endswith(azurerm_role_assignment.console_gitlab_secret_user[0].scope, "/vaults/test-vault/secrets/gitlab-token") &&
+      azurerm_role_assignment.console_gitlab_secret_user[0].principal_id == azurerm_user_assigned_identity.console[0].principal_id &&
+      azurerm_role_assignment.console_model_user[0].role_definition_name == "Cognitive Services OpenAI User" &&
+      azurerm_role_assignment.console_model_user[0].scope == local.model_id &&
+      azurerm_role_assignment.console_model_user[0].principal_id == azurerm_user_assigned_identity.console[0].principal_id
+    )
+    error_message = "Console query access must use the console identity and narrowly scoped GitLab and model roles."
+  }
+
+  assert {
+    condition = (
       azurerm_public_ip.ui_gateway[0].allocation_method == "Static" &&
       azurerm_public_ip.ui_gateway[0].sku == "Standard" &&
       azurerm_public_ip.ui_gateway[0].domain_name_label == "test-gitops-console"
     )
     error_message = "Console ingress must use a static Standard public IP with the configured DNS label."
   }
+}
+
+run "query_access_disabled_by_default" {
+  command = plan
+
+  variables {
+    authorized_ip_ranges = ["203.0.113.1/32"]
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.console_gitlab_secret_user) == 0 && length(azurerm_role_assignment.console_model_user) == 0
+    error_message = "Console query roles must be absent unless explicitly enabled."
+  }
+}
+
+run "query_access_requires_console_and_gitlab_configuration" {
+  command = plan
+
+  variables {
+    authorized_ip_ranges  = ["203.0.113.1/32"]
+    console_query_enabled = true
+  }
+
+  expect_failures = [
+    azurerm_role_assignment.console_gitlab_secret_user[0],
+    azurerm_role_assignment.console_model_user[0],
+  ]
 }
 
 run "reject_invalid_operator" {

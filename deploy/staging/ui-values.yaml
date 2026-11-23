@@ -4,6 +4,9 @@ uiKeyVault:
   secretName: AgenticGitOps-secret
   tenantId: fd58bbca-b54d-436b-a7bc-3cb0e2c1181a
 uiAllowedUsersSecret: gitops-console-allowlist
+apiGitlabKeyVault:
+  enabled: true
+querySecret: gitops-query-secret
 argocdTLS:
   caConfigMap: argocd-ca-bundle
 env:
@@ -13,7 +16,9 @@ env:
   GITOPS_UI_ENTRA_TENANT_ID: "fd58bbca-b54d-436b-a7bc-3cb0e2c1181a"
   GITOPS_UI_ENTRA_CLIENT_ID: "3f6ce1de-a5ed-43f0-bc06-aabd2ad1edcf"
   GITOPS_TEAMS_APPROVERS: ""
-  GITOPS_QUERY_ENABLED: "false"
+  GITOPS_QUERY_ENABLED: "true"
+  GITOPS_QUERY_APPLICATIONS: "helix"
+  GITOPS_QUERY_PROJECTS: "Gideon/agentic-gitOps-accelerator"
   GITOPS_BUNDLE_ENABLED: "false"
   GITOPS_ROLLBACK_ENABLED: "false"
   GITOPS_WRITE_ENABLED: "false"

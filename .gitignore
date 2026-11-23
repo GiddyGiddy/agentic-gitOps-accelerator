@@ -13,3 +13,4 @@ dist/
 *.tfplan
 crash.log
 .azure
+README.md

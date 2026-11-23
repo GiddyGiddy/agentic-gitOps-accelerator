@@ -50,6 +50,20 @@ spec:
                   name: {{ .Values.uiAllowedUsersSecret | quote }}
                   key: GITOPS_UI_ALLOWED_USERS
             {{- end }}
+            {{- if .Values.querySecret }}
+            {{- if hasKey .Values.env "GITOPS_QUERY_SECRET" }}
+            {{- fail "Set GITOPS_QUERY_SECRET in either env or querySecret, not both" }}
+            {{- end }}
+            - name: GITOPS_QUERY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.querySecret | quote }}
+                  key: GITOPS_QUERY_SECRET
+            {{- end }}
+            {{- if .Values.apiGitlabKeyVault.enabled }}
+            - name: GITOPS_GITLAB_TOKEN_FILE
+              value: /mnt/gitlab-token/gitlab-token
+            {{- end }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -67,7 +81,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-          {{- if or .Values.uiKeyVault.enabled .Values.argocdTLS.caConfigMap }}
+          {{- if or .Values.uiKeyVault.enabled .Values.argocdTLS.caConfigMap .Values.apiGitlabKeyVault.enabled }}
           volumeMounts:
             {{- if .Values.argocdTLS.caConfigMap }}
             - name: argocd-ca
@@ -79,10 +93,15 @@ spec:
               mountPath: /mnt/ui-secret
               readOnly: true
             {{- end }}
+            {{- if .Values.apiGitlabKeyVault.enabled }}
+            - name: gitlab-token
+              mountPath: /mnt/gitlab-token
+              readOnly: true
+            {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if or .Values.uiKeyVault.enabled .Values.argocdTLS.caConfigMap }}
+      {{- if or .Values.uiKeyVault.enabled .Values.argocdTLS.caConfigMap .Values.apiGitlabKeyVault.enabled }}
       volumes:
         {{- if .Values.argocdTLS.caConfigMap }}
         - name: argocd-ca
@@ -99,5 +118,13 @@ spec:
             readOnly: true
             volumeAttributes:
               secretProviderClass: {{ .Release.Name }}-ui-secret
+        {{- end }}
+        {{- if .Values.apiGitlabKeyVault.enabled }}
+        - name: gitlab-token
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Release.Name }}-api-gitlab-token
         {{- end }}
       {{- end }}
