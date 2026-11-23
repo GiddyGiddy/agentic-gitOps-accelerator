@@ -255,19 +255,7 @@ Indexing always uses the direct GitLab and Harbor clients, even in MCP mode.
 Configuration currently supports one GitLab chart project and one Harbor
 project/repository per deployment.
 
-For the worker, the optional Helm `harborKeyVault` settings mount a
-project-scoped Harbor reader password using its workload identity. Enable the
-mount only after creating the account and granting that identity access to the
-specific Key Vault secret. Supply the HTTPS URL and robot username through
-`harborKeyVault`, not `env`. CSI rotation is disabled in staging: restart the
-worker after rotating the credential. This worker-only mount does not configure
-Harbor access for the query API or enable traceability.
-The staging Argo CD application includes the
-[`harbor-reader-values.yaml`](./deploy/staging/harbor-reader-values.yaml)
-overlay and pins an image that supports `HARBOR_PASSWORD_FILE`. Apply the
-updated Application and manually sync it after these changes are merged.
-The staging reader robot expires on 21 February 2027; rotate it before then and
-update the Key Vault secret, then restart the worker.
+
 
 The configured successful build job must publish the following JSON as a GitLab
 job artifact at `GITOPS_TRACEABILITY_MANIFEST_PATH`. The example values are
