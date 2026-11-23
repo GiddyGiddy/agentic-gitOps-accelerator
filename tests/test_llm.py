@@ -24,10 +24,11 @@ def use_mock_http(monkeypatch, response_content, captured, status_code=200):
         captured.append(request)
         if status_code != 200:
             return httpx.Response(status_code, json={"error": {"message": "unavailable"}})
+        content = response_content[len(captured) - 1] if isinstance(response_content, list) else response_content
         return httpx.Response(200, json={
             "id": "test", "object": "chat.completion", "created": 1, "model": "test",
             "choices": [{"index": 0, "finish_reason": "stop",
-                         "message": {"role": "assistant", "content": response_content}}],
+                         "message": {"role": "assistant", "content": content}}],
         })
 
     class MockClient(original_client):
@@ -177,6 +178,43 @@ def test_model_api_error_is_recorded_without_retry(monkeypatch):
     assert result["status"] == "failed"
     assert len(captured) == 1
     assert "test-key" not in json.dumps(result)
+
+
+def test_model_retries_invalid_advisory_once_without_resending_output(monkeypatch, caplog):
+    captured = []
+    invalid = json.dumps({"summary": "Review.", "recommendations": ["private-output"] * 5})
+    valid = json.dumps({"summary": "Review.", "recommendations": ["Inspect the finding."]})
+    use_mock_http(monkeypatch, [invalid, valid], captured)
+    settings = Settings(llm_azure_endpoint="https://example.openai.azure.com", llm_model="deployment",
+                        llm_azure_auth="api_key", llm_azure_api_key="test-key")
+    advisory = AdvisoryInput(task="routing", categories=(FindingCategory.IMAGE_TAG,))
+
+    result = generate_advisory(settings, advisory)
+
+    assert result["status"] == "generated"
+    assert result["content"]["recommendations"] == ["Inspect the finding."]
+    assert len(captured) == 2
+    for request in captured:
+        body = json.loads(request.content)
+        assert "1 to 4" in body["messages"][0]["content"]
+        assert "private-output" not in request.content.decode()
+    assert "retrying once" in caplog.text
+    assert "private-output" not in caplog.text
+
+
+def test_model_invalid_advisory_remains_explicit_after_one_retry(monkeypatch):
+    captured = []
+    invalid = json.dumps({"summary": "Review.", "recommendations": ["Review."] * 5})
+    use_mock_http(monkeypatch, [invalid, invalid], captured)
+    settings = Settings(llm_azure_endpoint="https://example.openai.azure.com", llm_model="deployment",
+                        llm_azure_auth="api_key", llm_azure_api_key="test-key")
+    advisory = AdvisoryInput(task="routing", categories=(FindingCategory.IMAGE_TAG,))
+
+    result = generate_advisory(settings, advisory)
+
+    assert result["status"] == "failed"
+    assert "ValidationError" in result["error"]
+    assert len(captured) == 2
 
 
 def test_model_failures_are_explicit_and_never_erase_reconciliation(tmp_path, monkeypatch):

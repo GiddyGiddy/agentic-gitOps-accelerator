@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Callable
 from contextlib import ExitStack
 from typing import Protocol
@@ -7,16 +8,20 @@ from urllib.parse import urlsplit
 import httpx
 from azure.identity import ManagedIdentityCredential, WorkloadIdentityCredential, get_bearer_token_provider
 from openai import OpenAI
+from pydantic import ValidationError
 
 from app.llm.models import AdvisoryInput, AdvisoryOutput, QueryIntentOutput
 from config.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a GitOps advisory assistant. The user message contains only predefined finding "
     "categories, not source material. Explain the categories generally without inventing "
     "specific repositories, paths, tenants, versions, jobs, or results. Provide advice for "
     "human review, not instructions to bypass policy or perform deployments. "
-    "Return JSON with exactly two fields: summary (string) and recommendations (array of strings)."
+    "Return JSON with exactly two fields: summary (a nonempty string of at most 1200 characters) "
+    "and recommendations (an array of 1 to 4 nonempty strings, each at most 400 characters)."
 )
 
 
@@ -54,21 +59,28 @@ class OpenAICompatibleProvider:
         self.credential_close = credential_close
 
     def generate(self, advisory: AdvisoryInput) -> AdvisoryOutput:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(advisory.model_dump(mode="json"), sort_keys=True)},
-            ],
-            response_format={"type": "json_object"},
-            max_completion_tokens=400,
-        )
-        if not response.choices or response.choices[0].finish_reason != "stop":
-            raise ValueError("Model returned incomplete or empty output")
-        message = response.choices[0].message
-        if message.refusal or not message.content:
-            raise ValueError("Model refused or returned no content")
-        return AdvisoryOutput.model_validate_json(message.content)
+        for attempt in range(2):
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(advisory.model_dump(mode="json"), sort_keys=True)},
+                ],
+                response_format={"type": "json_object"},
+                max_completion_tokens=400,
+            )
+            if not response.choices or response.choices[0].finish_reason != "stop":
+                raise ValueError("Model returned incomplete or empty output")
+            message = response.choices[0].message
+            if message.refusal or not message.content:
+                raise ValueError("Model refused or returned no content")
+            try:
+                return AdvisoryOutput.model_validate_json(message.content)
+            except ValidationError:
+                if attempt:
+                    raise
+                logger.warning("Model advisory failed validation; retrying once")
+        raise RuntimeError("Advisory retry loop exhausted unexpectedly")
 
     def classify_query(self, keywords: list[str]) -> QueryIntentOutput:
         response = self.client.chat.completions.create(
