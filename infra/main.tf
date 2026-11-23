@@ -97,7 +97,7 @@ resource "azurerm_kubernetes_cluster" "staging" {
   }
 
   dynamic "key_vault_secrets_provider" {
-    for_each = var.gitlab_key_vault_enabled || var.ui_key_vault_enabled || var.harbor_key_vault_enabled ? [1] : []
+    for_each = var.gitlab_key_vault_enabled || var.ui_key_vault_enabled || var.harbor_key_vault_enabled || var.harbor_worker_key_vault_enabled ? [1] : []
     content {
       secret_rotation_enabled = false
     }
@@ -189,6 +189,21 @@ resource "azurerm_role_assignment" "harbor_secret_user" {
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_user_assigned_identity.harbor[0].principal_id
   principal_type       = "ServicePrincipal"
+}
+
+resource "azurerm_role_assignment" "harbor_worker_secret_user" {
+  count                = var.harbor_worker_key_vault_enabled ? 1 : 0
+  scope                = "${local.existing_scope}/Microsoft.KeyVault/vaults/${var.harbor_key_vault_name}/secrets/harbor-staging-reader-password"
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.worker.principal_id
+  principal_type       = "ServicePrincipal"
+
+  lifecycle {
+    precondition {
+      condition     = can(regex("^[A-Za-z0-9-]{3,24}$", var.harbor_key_vault_name))
+      error_message = "Provide a valid Harbor Key Vault name when worker access is enabled."
+    }
+  }
 }
 
 resource "azurerm_user_assigned_identity" "console" {

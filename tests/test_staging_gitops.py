@@ -126,3 +126,61 @@ def test_query_secret_rejects_conflicting_sources():
     )
     assert result.returncode != 0
     assert "Set GITOPS_QUERY_SECRET in either env or querySecret, not both" in result.stderr
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_harbor_reader_mount_is_worker_only():
+    command = [
+        "helm", "template", "helix", str(CHART),
+        "--set", "azureWorkloadIdentity.enabled=true",
+        "--set", "azureWorkloadIdentity.clientId=worker-client",
+        "--set", "harborKeyVault.enabled=true",
+        "--set", "harborKeyVault.vaultName=test-vault",
+        "--set", "harborKeyVault.secretName=reader-password",
+        "--set", "harborKeyVault.tenantId=test-tenant",
+        "--set", "harborKeyVault.url=https://harbor.example",
+        "--set", "harborKeyVault.username=robot-reader",
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    resources = [item for item in yaml.safe_load_all(result.stdout) if item]
+    deployments = {
+        item["metadata"]["name"]: item for item in resources if item["kind"] == "Deployment"
+    }
+    worker = deployments["helix-worker"]["spec"]["template"]["spec"]
+    api = deployments["helix-agents"]["spec"]["template"]["spec"]
+    worker_env = {item["name"]: item for item in worker["containers"][0]["env"]}
+    api_env = {item["name"] for item in api["containers"][0]["env"]}
+    provider = next(
+        item for item in resources
+        if item["kind"] == "SecretProviderClass" and item["metadata"]["name"] == "helix-harbor-reader"
+    )
+    assert worker_env["GITOPS_HARBOR_PASSWORD_FILE"]["value"] == "/mnt/harbor-reader/password"
+    assert worker_env["GITOPS_HARBOR_USERNAME"]["value"] == "robot-reader"
+    assert "GITOPS_HARBOR_PASSWORD_FILE" not in api_env
+    assert any(v["name"] == "harbor-reader" for v in worker["volumes"])
+    assert not any(v["name"] == "harbor-reader" for v in api.get("volumes", []))
+    assert provider["spec"]["parameters"]["clientID"] == "worker-client"
+    assert "reader-password" in provider["spec"]["parameters"]["objects"]
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_harbor_reader_rejects_missing_identity_or_conflicting_env():
+    base = [
+        "helm", "template", "helix", str(CHART),
+        "--set", "harborKeyVault.enabled=true",
+        "--set", "harborKeyVault.url=https://harbor.example",
+        "--set", "harborKeyVault.username=robot-reader",
+        "--set", "harborKeyVault.vaultName=test-vault",
+        "--set", "harborKeyVault.secretName=reader-password",
+        "--set", "harborKeyVault.tenantId=test-tenant",
+    ]
+    result = subprocess.run(base, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "harborKeyVault requires azureWorkloadIdentity.enabled" in result.stderr
+    result = subprocess.run(
+        base + ["--set", "azureWorkloadIdentity.enabled=true", "--set", "azureWorkloadIdentity.clientId=worker-client",
+                "--set", "env.GITOPS_HARBOR_URL=https://other.example"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "Do not set Harbor connection values in env" in result.stderr

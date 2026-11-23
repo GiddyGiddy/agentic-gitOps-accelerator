@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     argocd_webhook_secret: str = ""
     harbor_url: str = ""
     harbor_username: str = ""
-    harbor_password: str = ""
+    harbor_password: str = Field(default="", repr=False)
+    harbor_password_file: str = ""
     deploy_csv_path: str = "deploy_output.csv"
     teams_gateway_secret: str = ""
     teams_gateway_url: str = ""
@@ -88,6 +89,8 @@ def get_settings() -> Settings:
     settings = Settings()
     if settings.gitlab_token_file:
         settings.gitlab_token = _read_secret(settings.gitlab_token_file, "GitLab token")
+    if settings.harbor_password_file:
+        settings.harbor_password = _read_secret(settings.harbor_password_file, "Harbor password")
     if settings.ui_entra_client_secret_file:
         settings.ui_entra_client_secret = _read_secret(
             settings.ui_entra_client_secret_file, "Entra client secret"

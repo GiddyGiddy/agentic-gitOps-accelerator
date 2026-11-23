@@ -20,12 +20,34 @@ from app.tools.gitlab_client import GitLabClient
 from app.tools.harbor_client import HarborClient
 from app.traceability import index_build
 from app.worker import process_one
-from config.settings import Settings
+from config.settings import Settings, get_settings
 
 
 BUILD_SHA = "a" * 40
 FIX_SHA = "b" * 40
 DIGEST = "sha256:" + "c" * 64
+
+
+def test_harbor_password_file_takes_precedence_and_rejects_invalid_values(tmp_path, monkeypatch):
+    password_file = tmp_path / "harbor-password"
+    password_file.write_text("reader-password\n", encoding="utf-8")
+    monkeypatch.setenv("GITOPS_HARBOR_PASSWORD", "old-password")
+    monkeypatch.setenv("GITOPS_HARBOR_PASSWORD_FILE", str(password_file))
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.harbor_password == "reader-password"
+        assert "reader-password" not in repr(settings)
+        password_file.write_text(" invalid ", encoding="utf-8")
+        get_settings.cache_clear()
+        with pytest.raises(RuntimeError, match="Harbor password"):
+            get_settings()
+        password_file.unlink()
+        get_settings.cache_clear()
+        with pytest.raises(FileNotFoundError):
+            get_settings()
+    finally:
+        get_settings.cache_clear()
 
 
 @pytest.fixture

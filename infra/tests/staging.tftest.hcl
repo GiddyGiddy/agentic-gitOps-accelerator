@@ -18,6 +18,7 @@ variables {
   gitlab_key_vault_enabled  = false
   ui_key_vault_enabled      = false
   harbor_key_vault_enabled  = false
+  harbor_worker_key_vault_enabled = false
   console_query_enabled     = false
   ui_public_gateway_enabled = false
 }
@@ -36,6 +37,15 @@ override_resource {
   values = {
     id           = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/console"
     principal_id = "00000000-0000-0000-0000-000000000004"
+  }
+}
+
+override_resource {
+  target          = azurerm_user_assigned_identity.worker
+  override_during = plan
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/worker"
+    principal_id = "00000000-0000-0000-0000-000000000005"
   }
 }
 
@@ -167,6 +177,37 @@ run "harbor_access_requires_vault" {
   }
 
   expect_failures = [azurerm_user_assigned_identity.harbor[0]]
+}
+
+run "harbor_worker_access_is_secret_scoped" {
+  command = plan
+
+  variables {
+    authorized_ip_ranges            = ["203.0.113.1/32"]
+    harbor_worker_key_vault_enabled = true
+    harbor_key_vault_name           = "test-vault"
+  }
+
+  assert {
+    condition = (
+      azurerm_role_assignment.harbor_worker_secret_user[0].role_definition_name == "Key Vault Secrets User" &&
+      endswith(azurerm_role_assignment.harbor_worker_secret_user[0].scope, "/vaults/test-vault/secrets/harbor-staging-reader-password") &&
+      azurerm_role_assignment.harbor_worker_secret_user[0].principal_id == azurerm_user_assigned_identity.worker.principal_id
+    )
+    error_message = "Harbor worker access must be scoped to its own reader credential."
+  }
+}
+
+run "harbor_worker_access_requires_vault" {
+  command = plan
+
+  variables {
+    authorized_ip_ranges            = ["203.0.113.1/32"]
+    harbor_worker_key_vault_enabled = true
+    harbor_key_vault_name           = ""
+  }
+
+  expect_failures = [azurerm_role_assignment.harbor_worker_secret_user[0]]
 }
 
 run "query_access_requires_console_and_gitlab_configuration" {

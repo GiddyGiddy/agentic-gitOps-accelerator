@@ -9,6 +9,13 @@ gitlabKeyVault:
   tenantId: ""
 apiGitlabKeyVault:
   enabled: false
+harborKeyVault:
+  enabled: false
+  vaultName: ""
+  secretName: ""
+  tenantId: ""
+  url: ""
+  username: ""
 argocdTLS:
   caConfigMap: ""
   caKey: ca.crt
