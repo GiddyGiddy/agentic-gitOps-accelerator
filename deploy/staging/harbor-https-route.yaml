@@ -1,0 +1,16 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: harbor-https
+  namespace: harbor
+spec:
+  parentRefs:
+    - name: gitops-console
+      namespace: gitops-staging
+      sectionName: harbor-https
+  hostnames:
+    - harbor.giddyitsolutions.com
+  rules:
+    - backendRefs:
+        - name: harbor
+          port: 80

@@ -14,7 +14,12 @@ mock_provider "azapi" {
 }
 
 variables {
-  operator_object_id = "00000000-0000-0000-0000-000000000003"
+  operator_object_id        = "00000000-0000-0000-0000-000000000003"
+  gitlab_key_vault_enabled  = false
+  ui_key_vault_enabled      = false
+  harbor_key_vault_enabled  = false
+  console_query_enabled     = false
+  ui_public_gateway_enabled = false
 }
 
 override_resource {
@@ -127,6 +132,41 @@ run "query_access_disabled_by_default" {
     condition     = length(azurerm_role_assignment.console_gitlab_secret_user) == 0 && length(azurerm_role_assignment.console_model_user) == 0
     error_message = "Console query roles must be absent unless explicitly enabled."
   }
+}
+
+run "harbor_access_is_secret_scoped" {
+  command = plan
+
+  variables {
+    authorized_ip_ranges     = ["203.0.113.1/32"]
+    harbor_key_vault_enabled = true
+    harbor_key_vault_name    = "test-vault"
+  }
+
+  assert {
+    condition = (
+      azurerm_federated_identity_credential.harbor[0].subject == "system:serviceaccount:harbor:harbor-secret-sync" &&
+      length(azurerm_role_assignment.harbor_secret_user) == 11 &&
+      alltrue([
+        for name, role in azurerm_role_assignment.harbor_secret_user :
+        role.role_definition_name == "Key Vault Secrets User" &&
+        endswith(role.scope, "/vaults/test-vault/secrets/${name}")
+      ])
+    )
+    error_message = "Harbor must use its dedicated service account and secret-scoped access."
+  }
+}
+
+run "harbor_access_requires_vault" {
+  command = plan
+
+  variables {
+    authorized_ip_ranges     = ["203.0.113.1/32"]
+    harbor_key_vault_enabled = true
+    harbor_key_vault_name    = ""
+  }
+
+  expect_failures = [azurerm_user_assigned_identity.harbor[0]]
 }
 
 run "query_access_requires_console_and_gitlab_configuration" {

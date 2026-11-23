@@ -101,6 +101,52 @@ To use polling instead of GitLab webhooks, configure `GITOPS_GITLAB_URL`,
 start `.\.venv\Scripts\gitops-gitlab-poller.exe` in another terminal. Its first
 snapshot establishes a baseline rather than replaying existing MRs and tags.
 
+### Private Harbor staging trial
+
+The staging-only Harbor trial uses chart `1.19.4` (Harbor `2.15.4`) with
+[`harbor-values.yaml`](./deploy/staging/harbor-values.yaml) and
+[`harbor-secret-sync.yaml`](./deploy/staging/harbor-secret-sync.yaml).
+The ClusterIP service is exposed at `https://harbor.giddyitsolutions.com`
+through host-specific listeners on the shared console gateway. The HTTP listener
+redirects to HTTPS; cert-manager uses HTTP-01 for the certificate in
+`gitops-staging`, and the HTTPS listener accepts routes only from the `harbor`
+namespace. See [`ui-gateway.yaml`](./deploy/staging/ui-gateway.yaml),
+[`harbor-http-gateway.yaml`](./deploy/staging/harbor-http-gateway.yaml),
+[`harbor-certificate.yaml`](./deploy/staging/harbor-certificate.yaml), and
+[`harbor-https-route.yaml`](./deploy/staging/harbor-https-route.yaml).
+The DNS CNAME is managed externally. Harbor, the console and certificate
+renewal are unavailable while AKS is stopped.
+Self-registration is disabled and project creation is restricted to admins.
+The existing `library` project was changed to private and a private `charts`
+project was created through the API; these project settings live in Harbor's
+database, not the Helm values. Check them again after a fresh installation or
+database restore. No chart has been published, and the control plane and
+GitLab CI are not yet connected to this Harbor instance.
+
+The dedicated `harbor-secret-sync` workload identity has read access scoped
+to eleven Harbor Key Vault secrets. Its CSI mount synchronizes nine Kubernetes
+Secrets used by the chart. These are sensitive Kubernetes Secrets: restrict
+access to them and never put their values in Helm values, commands or logs.
+CSI-synchronized Secrets may be deleted when no pod mounts the provider;
+rolling restart and one AKS stop/start recovery were tested.
+Automatic CSI rotation is disabled. Rotation requires a coordinated procedure
+and restarts for environment-based consumers; changing the PostgreSQL secret
+alone does not change the existing database password. Likewise, replacing the
+bootstrap admin secret does not by itself change an existing Harbor admin
+password.
+
+Chart `1.19.4` has a specific internal PostgreSQL password workaround: its
+chart-generated database Secret holds an empty placeholder, while the
+PostgreSQL container and core use `harbor-database-credentials`. Revalidate
+this behavior and database access before any chart upgrade or restoration.
+A same-version Helm upgrade and an authenticated database query succeeded in
+the trial, but version upgrades and disaster recovery have not been tested.
+Four persistent volumes, including the registry and database, remain billable
+when AKS is stopped. There are no verified backups, high availability,
+ingress rate/body-size controls, IP allowlist, or production hardening. The
+third node and Harbor resources increase staging cost; monitor actual charges
+and capacity.
+
 
 ## Configuration
 
