@@ -262,9 +262,10 @@ specific Key Vault secret. Supply the HTTPS URL and robot username through
 `harborKeyVault`, not `env`. CSI rotation is disabled in staging: restart the
 worker after rotating the credential. This worker-only mount does not configure
 Harbor access for the query API or enable traceability.
-The staging [`harbor-reader-values.yaml`](./deploy/staging/harbor-reader-values.yaml)
-overlay is deliberately not included in the existing Argo CD application until
-an image supporting `HARBOR_PASSWORD_FILE` has been published and deployed.
+The staging Argo CD application includes the
+[`harbor-reader-values.yaml`](./deploy/staging/harbor-reader-values.yaml)
+overlay and pins an image that supports `HARBOR_PASSWORD_FILE`. Apply the
+updated Application and manually sync it after these changes are merged.
 The staging reader robot expires on 21 February 2027; rotate it before then and
 update the Key Vault secret, then restart the worker.
 

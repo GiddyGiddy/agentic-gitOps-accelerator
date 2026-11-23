@@ -55,6 +55,7 @@ def test_staging_application_uses_existing_overlays_and_digest():
         STAGING / "ui-values.yaml",
         STAGING / "gitlab-polling-values.yaml",
         STAGING / "gitops-values.yaml",
+        STAGING / "harbor-reader-values.yaml",
     ]
     assert all(path.is_file() for path in values)
     assert _read_yaml(values[0])["uiAllowedUsersSecret"] == "gitops-console-allowlist"
@@ -161,6 +162,29 @@ def test_harbor_reader_mount_is_worker_only():
     assert not any(v["name"] == "harbor-reader" for v in api.get("volumes", []))
     assert provider["spec"]["parameters"]["clientID"] == "worker-client"
     assert "reader-password" in provider["spec"]["parameters"]["objects"]
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_staging_harbor_reader_uses_worker_identity():
+    command = ["helm", "template", "helix", str(CHART)]
+    for name in ("ui-values.yaml", "gitlab-polling-values.yaml", "gitops-values.yaml", "harbor-reader-values.yaml"):
+        command.extend(["-f", str(STAGING / name)])
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    resources = [item for item in yaml.safe_load_all(result.stdout) if item]
+    deployments = {
+        item["metadata"]["name"]: item for item in resources if item["kind"] == "Deployment"
+    }
+    worker = deployments["helix-worker"]["spec"]["template"]["spec"]
+    worker_env = {item["name"]: item for item in worker["containers"][0]["env"]}
+    provider = next(
+        item for item in resources
+        if item["kind"] == "SecretProviderClass" and item["metadata"]["name"] == "helix-harbor-reader"
+    )
+    assert worker_env["GITOPS_HARBOR_PASSWORD_FILE"]["value"] == "/mnt/harbor-reader/password"
+    assert provider["spec"]["parameters"]["clientID"] == _read_yaml(STAGING / "gitlab-polling-values.yaml")["azureWorkloadIdentity"]["clientId"]
+    for name in ("helix-agents", "helix-gitlab-poller"):
+        spec = deployments[name]["spec"]["template"]["spec"]
+        assert not any(volume["name"] == "harbor-reader" for volume in spec.get("volumes", []))
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")

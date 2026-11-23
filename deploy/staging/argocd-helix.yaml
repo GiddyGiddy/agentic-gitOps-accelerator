@@ -38,6 +38,7 @@ spec:
         - ../../staging/ui-values.yaml
         - ../../staging/gitlab-polling-values.yaml
         - ../../staging/gitops-values.yaml
+        - ../../staging/harbor-reader-values.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: gitops-staging
