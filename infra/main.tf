@@ -5,6 +5,19 @@ locals {
   registry_id    = "${local.existing_scope}/Microsoft.ContainerRegistry/registries/${var.registry_name}"
   model_id       = "${local.existing_scope}/Microsoft.CognitiveServices/accounts/${var.model_resource_name}"
   tags           = { environment = "staging", project = "agentic-gitops" }
+  harbor_secret_names = toset([
+    "harbor-staging-admin-password",
+    "harbor-staging-encryption-key",
+    "harbor-staging-core-auth",
+    "harbor-staging-xsrf",
+    "harbor-staging-token-key",
+    "harbor-staging-token-cert",
+    "harbor-staging-job-auth",
+    "harbor-staging-registry-auth",
+    "harbor-staging-registry-password",
+    "harbor-staging-registry-htpasswd",
+    "harbor-staging-database-password",
+  ])
 }
 
 resource "azurerm_resource_group" "staging" {
@@ -48,7 +61,7 @@ resource "azurerm_kubernetes_cluster" "staging" {
   default_node_pool {
     name            = "system"
     vm_size         = var.node_vm_size
-    node_count      = 2
+    node_count      = 3
     os_disk_size_gb = 32
     os_disk_type    = "Managed"
 
@@ -84,7 +97,7 @@ resource "azurerm_kubernetes_cluster" "staging" {
   }
 
   dynamic "key_vault_secrets_provider" {
-    for_each = var.gitlab_key_vault_enabled || var.ui_key_vault_enabled ? [1] : []
+    for_each = var.gitlab_key_vault_enabled || var.ui_key_vault_enabled || var.harbor_key_vault_enabled ? [1] : []
     content {
       secret_rotation_enabled = false
     }
@@ -144,6 +157,38 @@ resource "azurerm_role_assignment" "gitlab_secret_user" {
       error_message = "Provide valid GitLab Key Vault and secret names."
     }
   }
+}
+
+resource "azurerm_user_assigned_identity" "harbor" {
+  count               = var.harbor_key_vault_enabled ? 1 : 0
+  name                = "id-harbor-staging"
+  resource_group_name = azurerm_resource_group.staging.name
+  location            = azurerm_resource_group.staging.location
+  tags                = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = can(regex("^[A-Za-z0-9-]{3,24}$", var.harbor_key_vault_name))
+      error_message = "Provide a valid Harbor Key Vault name when Harbor access is enabled."
+    }
+  }
+}
+
+resource "azurerm_federated_identity_credential" "harbor" {
+  count                     = var.harbor_key_vault_enabled ? 1 : 0
+  name                      = "harbor-secret-sync"
+  user_assigned_identity_id = azurerm_user_assigned_identity.harbor[0].id
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = azurerm_kubernetes_cluster.staging.oidc_issuer_url
+  subject                   = "system:serviceaccount:harbor:harbor-secret-sync"
+}
+
+resource "azurerm_role_assignment" "harbor_secret_user" {
+  for_each             = var.harbor_key_vault_enabled ? local.harbor_secret_names : toset([])
+  scope                = "${local.existing_scope}/Microsoft.KeyVault/vaults/${var.harbor_key_vault_name}/secrets/${each.key}"
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.harbor[0].principal_id
+  principal_type       = "ServicePrincipal"
 }
 
 resource "azurerm_user_assigned_identity" "console" {

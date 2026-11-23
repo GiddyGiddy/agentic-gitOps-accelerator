@@ -27,6 +27,27 @@ spec:
       allowedRoutes:
         namespaces:
           from: Same
+    - name: harbor-http
+      hostname: harbor.giddyitsolutions.com
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: harbor-https
+      hostname: harbor.giddyitsolutions.com
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: harbor-gateway-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: harbor
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

@@ -1,0 +1,30 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: harbor-letsencrypt
+  namespace: gitops-staging
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: harbor-acme-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: gitops-console
+                kind: Gateway
+                sectionName: harbor-http
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: harbor
+  namespace: gitops-staging
+spec:
+  secretName: harbor-gateway-tls
+  issuerRef:
+    name: harbor-letsencrypt
+    kind: Issuer
+  dnsNames:
+    - harbor.giddyitsolutions.com

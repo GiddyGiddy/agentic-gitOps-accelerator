@@ -99,6 +99,23 @@ variable "ui_key_vault_enabled" {
   default     = false
 }
 
+variable "harbor_key_vault_enabled" {
+  description = "Enable a dedicated Harbor identity and secret-scoped Key Vault access."
+  type        = bool
+  default     = false
+}
+
+variable "harbor_key_vault_name" {
+  description = "Existing Key Vault name containing Harbor credentials."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.harbor_key_vault_name == "" || can(regex("^[A-Za-z0-9-]{3,24}$", var.harbor_key_vault_name))
+    error_message = "Provide a valid Harbor Key Vault name."
+  }
+}
+
 variable "ui_key_vault_name" {
   description = "Existing Key Vault name containing the Entra client secret."
   type        = string

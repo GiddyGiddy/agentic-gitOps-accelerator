@@ -1,0 +1,86 @@
+expose:
+  type: clusterIP
+  tls:
+    enabled: false
+externalURL: https://harbor.giddyitsolutions.com
+persistence:
+  persistentVolumeClaim:
+    registry:
+      storageClass: managed-csi
+      size: 32Gi
+    jobservice:
+      jobLog:
+        storageClass: managed-csi
+        size: 4Gi
+    database:
+      storageClass: managed-csi
+      size: 4Gi
+    redis:
+      storageClass: managed-csi
+      size: 4Gi
+trivy:
+  enabled: false
+existingSecretAdminPassword: harbor-admin
+existingSecretSecretKey: harbor-encryption
+nginx:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+portal:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+core:
+  existingSecret: harbor-core-auth
+  existingXsrfSecret: harbor-xsrf
+  secretName: harbor-token-signing
+  configureUserSettings: '{"self_registration":false,"project_creation_restriction":"adminonly"}'
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+jobservice:
+  existingSecret: harbor-job-auth
+  resources:
+    requests:
+      cpu: 300m
+      memory: 512Mi
+registry:
+  existingSecret: harbor-registry-auth
+  credentials:
+    existingSecret: harbor-registry-credentials
+  registry:
+    resources:
+      requests:
+        cpu: 300m
+        memory: 512Mi
+  controller:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+database:
+  type: internal
+  internal:
+    password: ""
+    resources:
+      requests:
+        cpu: 350m
+        memory: 1Gi
+    extraEnvVars:
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: harbor-database-credentials
+            key: password
+  # Chart 1.19.4 also uses this Secret for core's internal-database password.
+  external:
+    existingSecret: harbor-database-credentials
+redis:
+  internal:
+    resources:
+      requests:
+        cpu: 150m
+        memory: 512Mi
