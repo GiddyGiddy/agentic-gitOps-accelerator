@@ -8,6 +8,7 @@ workflow:
 stages:
   - test
   - build
+  - publish
 
 test:
   image: python:3.12-slim
@@ -26,4 +27,23 @@ build:
   script:
     - buildctl-daemonless.sh build --frontend dockerfile.v0 --local context=. --local dockerfile=. --output "type=image,name=agentic-gitops-agents:$CI_COMMIT_SHA,push=false"
     - echo "Built image; configure registry login and an approved push policy before publishing."
+
+publish_chart:
+  stage: publish
+  image:
+    name: alpine/helm:3.17.3@sha256:d899e6316789fec04ee95300a18e454b7942539cbb3d89bde3e0655d6ca2e895
+    entrypoint: [""]
+  tags:
+    - harbor-publisher
+  environment:
+    name: harbor-publish
+  resource_group: harbor-chart-publish
+  rules:
+    - if: '$CHART_PUBLISH_ENABLED == "true" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $CI_DEBUG_TRACE != "true"'
+    - when: never
+  script:
+    - sh scripts/publish-chart.sh
+  artifacts:
+    paths:
+      - gitops-provenance.json
 
