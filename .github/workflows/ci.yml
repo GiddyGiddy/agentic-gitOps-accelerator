@@ -92,7 +92,7 @@ jobs:
             echo "::error::GitOps staging image digest is invalid."
             exit 1
           fi
-          if [[ $(grep -Fc "inventarmindde4cc0.azurecr.io/agentic-gitops-staging@$digest" "$RUNNER_TEMP/gitops-staging.yaml") -ne 3 ]]; then
+          if [[ $(grep -Fc "harbor.giddyitsolutions.com/charts/agentic-gitops-staging@$digest" "$RUNNER_TEMP/gitops-staging.yaml") -ne 3 ]]; then
             echo "::error::API, worker and poller must use the pinned image."
             exit 1
           fi

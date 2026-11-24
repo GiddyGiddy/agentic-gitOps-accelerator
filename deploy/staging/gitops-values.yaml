@@ -1,5 +1,7 @@
 image:
-  repository: inventarmindde4cc0.azurecr.io/agentic-gitops-staging
+  repository: harbor.giddyitsolutions.com/charts/agentic-gitops-staging
   digest: sha256:ee872356a5c683cc05fde607d14e8ecb04aedd3d2e26d3b80c77848cb64e1da4
+imagePullSecrets:
+  - name: harbor-image-pull
 uiKeyVault:
   clientId: 31ec0eca-606b-4f06-9220-5a5cad33feea

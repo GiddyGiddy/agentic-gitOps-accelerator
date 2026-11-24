@@ -101,53 +101,7 @@ To use polling instead of GitLab webhooks, configure `GITOPS_GITLAB_URL`,
 start `.\.venv\Scripts\gitops-gitlab-poller.exe` in another terminal. Its first
 snapshot establishes a baseline rather than replaying existing MRs and tags.
 
-### Private Harbor staging trial
 
-The staging-only Harbor trial uses chart `1.19.4` (Harbor `2.15.4`) with
-[`harbor-values.yaml`](./deploy/staging/harbor-values.yaml) and
-[`harbor-secret-sync.yaml`](./deploy/staging/harbor-secret-sync.yaml).
-The ClusterIP service is exposed at `https://harbor.giddyitsolutions.com`
-through host-specific listeners on the shared console gateway. The HTTP listener
-redirects to HTTPS; cert-manager uses HTTP-01 for the certificate in
-`gitops-staging`, and the HTTPS listener accepts routes only from the `harbor`
-namespace. See [`ui-gateway.yaml`](./deploy/staging/ui-gateway.yaml),
-[`harbor-http-gateway.yaml`](./deploy/staging/harbor-http-gateway.yaml),
-[`harbor-certificate.yaml`](./deploy/staging/harbor-certificate.yaml), and
-[`harbor-https-route.yaml`](./deploy/staging/harbor-https-route.yaml).
-The DNS CNAME is managed externally. Harbor, the console and certificate
-renewal are unavailable while AKS is stopped.
-Self-registration is disabled and project creation is restricted to admins.
-The existing `library` project was changed to private and a private `charts`
-project was created through the API; these project settings live in Harbor's
-database, not the Helm values. Check them again after a fresh installation or
-database restore. The accelerator chart `helix-gitops-agents:0.1.0` was
-published once to `charts`, and the staging worker's read-only Harbor client
-verified its digest. GitLab CI does not yet publish charts, and traceability
-indexing remains disabled.
-
-The dedicated `harbor-secret-sync` workload identity has read access scoped
-to eleven Harbor Key Vault secrets. Its CSI mount synchronizes nine Kubernetes
-Secrets used by the chart. These are sensitive Kubernetes Secrets: restrict
-access to them and never put their values in Helm values, commands or logs.
-CSI-synchronized Secrets may be deleted when no pod mounts the provider;
-rolling restart and one AKS stop/start recovery were tested.
-Automatic CSI rotation is disabled. Rotation requires a coordinated procedure
-and restarts for environment-based consumers; changing the PostgreSQL secret
-alone does not change the existing database password. Likewise, replacing the
-bootstrap admin secret does not by itself change an existing Harbor admin
-password.
-
-Chart `1.19.4` has a specific internal PostgreSQL password workaround: its
-chart-generated database Secret holds an empty placeholder, while the
-PostgreSQL container and core use `harbor-database-credentials`. Revalidate
-this behavior and database access before any chart upgrade or restoration.
-A same-version Helm upgrade and an authenticated database query succeeded in
-the trial, but version upgrades and disaster recovery have not been tested.
-Four persistent volumes, including the registry and database, remain billable
-when AKS is stopped. There are no verified backups, high availability,
-ingress rate/body-size controls, IP allowlist, or production hardening. The
-third node and Harbor resources increase staging cost; monitor actual charges
-and capacity.
 
 
 ## Configuration
@@ -303,59 +257,6 @@ Deployment CSVs contain no digest, so they cannot prove which indexed package
 was deployed. Candidate Jira and release-origin answers can be incomplete;
 deployment origin remains unverified without stronger evidence.
 
-#### Staging GitLab chart publisher
-
-The `publish_chart` job is prepared but **not enabled or live-tested**.
-It runs automatically after successful test and build stages only for push
-pipelines on the protected default branch when the project variable
-`CHART_PUBLISH_ENABLED` is `true`. It requires a runner tagged
-`harbor-publisher`; the existing shared unprotected runner is not suitable.
-Debug-trace pipelines do not run the job.
-
-Before enabling it:
-
-1. Provision and verify a dedicated, project-locked, protected runner with
-   isolated, disposable job environments using a Docker or Kubernetes executor.
-   Verify the pinned Helm image and its source under the runner's supply-chain
-   policy. Ensure the runner cannot accept untrusted
-   jobs, and disable debug tracing. Review the protected branch's Maintainer
-   access and GitLab variable/pipeline permissions: anyone able to alter the
-   trusted pipeline or run code with these credentials can exfiltrate them.
-   For staging, the selected approach is the Kubernetes executor on the
-   existing AKS nodes, with separate runner-manager and job namespaces,
-   namespace-scoped runner RBAC and no Kubernetes API token in job pods.
-   These shared nodes do not provide dedicated-node isolation. Runner
-   installation, its GitLab authentication and its isolation still need to
-   be implemented and verified.
-2. Verify that the runner can reach Harbor with its genuine certificate and
-   without TLS interception of credentials or chart contents. Provision a
-   separate, expiring robot with only push and pull permissions for `charts`.
-   Set `HARBOR_USERNAME` and the file-type `HARBOR_PASSWORD_FILE` as protected
-   GitLab variables scoped **only** to the `harbor-publish` environment;
-   protect and mask the password where GitLab supports it. Do not use
-   wildcard-scoped publisher credentials. Never commit or print the secret.
-3. Keep `CHART_PUBLISH_ENABLED` unset until the runner and credentials are
-   ready. Then set it to `true` as a protected project variable available to
-   pipeline rules. Confirm that mirror-triggered pipelines have source `push`
-   and that artifact retention meets the indexing/backfill window.
-4. Harbor is hosted on the staging AKS cluster, which is normally stopped.
-   Enable publication only while Harbor is available; otherwise eligible
-   pipelines will fail. Disable the variable again before stopping AKS.
-
-Each job packages the chart with a unique version
-`<Chart.yaml version>-ci.<pipeline ID>.<job ID>`, pushes it to
-`charts/helix-gitops-agents`, and saves Helm's returned OCI digest in
-`gitops-provenance.json`. A failed push or invalid digest produces no
-provenance artifact. The current manifest deliberately has `fixes: []`: it
-does not identify Jira fixes or prove that a fix was packaged. Chart versions
-in `Chart.yaml` must currently be plain `major.minor.patch` versions.
-
-For a future traceability deployment, use `publish_chart` as the build job,
-`charts` as the Harbor project and `helix-gitops-agents` as the repository.
-`EXAMPLE` is a placeholder Jira prefix only: replace it with the real project
-prefix before relying on Jira results. Do not enable the index until its
-database, reader access and matching settings on all three processes are ready.
-The previously published `0.1.0` was a one-off and has no GitLab provenance.
 
 ### Natural-language queries
 

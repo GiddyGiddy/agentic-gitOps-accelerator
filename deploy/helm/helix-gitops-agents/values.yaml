@@ -38,6 +38,7 @@ image:
   tag: "0.1.0"
   digest: ""
   pullPolicy: IfNotPresent
+imagePullSecrets: []
 service:
   port: 80
 serviceAccount:
