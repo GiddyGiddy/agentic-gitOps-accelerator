@@ -61,7 +61,9 @@ def test_staging_application_uses_existing_overlays_and_digest():
     assert _read_yaml(values[0])["uiAllowedUsersSecret"] == "gitops-console-allowlist"
     assert _read_yaml(values[1])["gitlabPoller"]["enabled"] is True
     gitops_values = _read_yaml(values[2])
+    assert gitops_values["image"]["repository"] == "harbor.giddyitsolutions.com/charts/agentic-gitops-staging"
     assert re.fullmatch(r"sha256:[0-9a-f]{64}", gitops_values["image"]["digest"])
+    assert gitops_values["imagePullSecrets"] == [{"name": "harbor-image-pull"}]
     assert UUID(gitops_values["uiKeyVault"]["clientId"]).int != 0
 
 
@@ -74,6 +76,45 @@ def test_default_chart_does_not_mount_query_credentials():
     assert "GITOPS_QUERY_SECRET" not in api_env
     assert "GITOPS_GITLAB_TOKEN_FILE" not in api_env
     assert not any(item["kind"] == "SecretProviderClass" for item in resources)
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_image_pull_secret_is_optional_and_applies_to_all_workloads():
+    command = [
+        "helm", "template", "helix", str(CHART),
+        "--set", "gitlabPoller.enabled=true",
+        "--set", "mcp.enabled=true",
+        "--set", "mcp.existingSecret=mcp-test",
+        "--set", "mcp.allowedHosts=mcp.example",
+    ]
+    for extra, expected in (([], None), (["--set", "imagePullSecrets[0].name=harbor-pull"], [{"name": "harbor-pull"}])):
+        result = subprocess.run(command + extra, capture_output=True, text=True, check=True)
+        resources = [item for item in yaml.safe_load_all(result.stdout) if item]
+        deployments = [item for item in resources if item["kind"] == "Deployment"]
+        assert {item["metadata"]["name"] for item in deployments} == {
+            "helix-agents", "helix-worker", "helix-gitlab-poller", "helix-mcp",
+        }
+        for item in deployments:
+            assert item["spec"]["template"]["spec"].get("imagePullSecrets") == expected
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
+def test_staging_harbor_image_and_pull_secret_are_rendered_for_all_workloads():
+    command = ["helm", "template", "helix", str(CHART)]
+    for name in ("ui-values.yaml", "gitlab-polling-values.yaml", "gitops-values.yaml", "harbor-reader-values.yaml"):
+        command.extend(["-f", str(STAGING / name)])
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    resources = [item for item in yaml.safe_load_all(result.stdout) if item]
+    deployments = [item for item in resources if item["kind"] == "Deployment"]
+    values = _read_yaml(STAGING / "gitops-values.yaml")
+    image = f'{values["image"]["repository"]}@{values["image"]["digest"]}'
+    assert {item["metadata"]["name"] for item in deployments} == {
+        "helix-agents", "helix-worker", "helix-gitlab-poller",
+    }
+    for item in deployments:
+        spec = item["spec"]["template"]["spec"]
+        assert spec["imagePullSecrets"] == [{"name": "harbor-image-pull"}]
+        assert spec["containers"][0]["image"] == image
 
 
 @pytest.mark.skipif(shutil.which("helm") is None, reason="Helm is not installed")
