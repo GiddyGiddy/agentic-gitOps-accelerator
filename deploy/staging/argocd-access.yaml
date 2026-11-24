@@ -8,6 +8,19 @@ metadata:
     app.kubernetes.io/part-of: argocd
 data:
   accounts.gitops-agent: apiKey
+  admin.enabled: "false"
+  users.anonymous.enabled: "false"
+  url: https://argocd.giddyitsolutions.com
+  oidc.config: |
+    name: Microsoft Entra ID
+    issuer: https://login.microsoftonline.com/fd58bbca-b54d-436b-a7bc-3cb0e2c1181a/v2.0
+    clientID: fe502dce-dad3-4774-956d-c97d1a8b0b90
+    azure:
+      useWorkloadIdentity: true
+    requestedScopes:
+      - openid
+      - profile
+      - email
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -19,9 +32,13 @@ metadata:
     app.kubernetes.io/part-of: argocd
 data:
   policy.default: role:agent-default
+  scopes: '[roles]'
   policy.csv: |
-    p, role:gitops-agent-readonly, applications, get, agentic-gitops-accelerator/*, allow
+    p, role:gitops-agent-readonly, applications, get, helix-staging/helix, allow
     g, gitops-agent, role:gitops-agent-readonly
+    p, role:argocd-staging-reader, applications, get, helix-staging/helix, allow
+    p, role:argocd-staging-reader, projects, get, helix-staging, allow
+    g, argocd.staging.reader, role:argocd-staging-reader
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject

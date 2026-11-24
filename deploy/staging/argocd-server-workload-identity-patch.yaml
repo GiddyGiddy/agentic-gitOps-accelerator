@@ -1,0 +1,5 @@
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"

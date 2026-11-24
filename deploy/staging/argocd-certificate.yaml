@@ -1,0 +1,30 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: argocd-letsencrypt
+  namespace: gitops-staging
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: argocd-acme-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: gitops-console
+                kind: Gateway
+                sectionName: argocd-http
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-gateway
+  namespace: gitops-staging
+spec:
+  secretName: argocd-gateway-tls
+  issuerRef:
+    name: argocd-letsencrypt
+    kind: Issuer
+  dnsNames:
+    - argocd.giddyitsolutions.com

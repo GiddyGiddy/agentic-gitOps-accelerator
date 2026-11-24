@@ -48,6 +48,27 @@ spec:
           selector:
             matchLabels:
               kubernetes.io/metadata.name: harbor
+    - name: argocd-http
+      hostname: argocd.giddyitsolutions.com
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: argocd-https
+      hostname: argocd.giddyitsolutions.com
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: argocd-gateway-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: argocd
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
