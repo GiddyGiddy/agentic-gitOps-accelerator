@@ -152,9 +152,24 @@ def run_skopeo(args):
     return result.stdout
 
 
+def wait_for_harbor(host, timeout_seconds, poll_seconds, transport=None, sleep=time.sleep, clock=time.monotonic):
+    """AKS reports Running before Harbor's pods are ready, so wait for its unauthenticated ping."""
+    deadline = clock() + timeout_seconds
+    with httpx.Client(timeout=10, follow_redirects=False, transport=transport) as client:
+        while True:
+            try:
+                if client.get(f"https://{host}/api/v2.0/ping").status_code == 200:
+                    return
+            except httpx.HTTPError:
+                pass
+            if clock() >= deadline:
+                raise PublishError("Harbor did not become ready in time")
+            sleep(poll_seconds)
+
+
 def copy_and_verify(source, digest, destination_repository, tag, src_authfile, dest_authfile, skopeo=run_skopeo):
     destination = f"docker://{destination_repository}:{tag}"
-    skopeo(["copy", "--all", "--preserve-digests", "--src-authfile", src_authfile,
+    skopeo(["copy", "--all", "--preserve-digests", "--retry-times", "3", "--src-authfile", src_authfile,
             "--dest-authfile", dest_authfile, f"docker://{source}@{digest}", destination])
     manifest = skopeo(["inspect", "--raw", "--authfile", dest_authfile, destination])
     actual = "sha256:" + hashlib.sha256(manifest).hexdigest()
@@ -207,6 +222,7 @@ def main(skopeo=run_skopeo, transport=None, sleep=time.sleep):
     candidate = wait_for_candidate(github, repo, commit, timeout, int(os.environ.get("GITHUB_POLL_SECONDS", "30")), sleep=sleep)
     evidence = fetch_evidence(github, repo, commit, candidate, registry)
     destination = f"{harbor_host}/{harbor_repository}"
+    wait_for_harbor(harbor_host, int(os.environ.get("HARBOR_WAIT_SECONDS", "900")), 15, transport=transport, sleep=sleep)
     with tempfile.TemporaryDirectory() as directory:
         dest_authfile = write_harbor_authfile(directory, harbor_host, harbor_user, harbor_password)
         digest = copy_and_verify(evidence.repository, evidence.digest, destination, f"git-{commit[:12]}",

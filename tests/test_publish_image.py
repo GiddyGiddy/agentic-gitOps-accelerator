@@ -43,6 +43,7 @@ class FakeGitHub:
     def __init__(self, runs, jobs, artifacts=None, archive=None, redirect="https://x.blob.core.windows.net/a?sig=secret"):
         self.runs, self.jobs, self.artifacts = runs, jobs, artifacts or {}
         self.archive, self.redirect, self.requests = archive, redirect, []
+        self.harbor_ready = lambda: True
 
     def __call__(self, request: httpx.Request):
         self.requests.append(request)
@@ -59,6 +60,8 @@ class FakeGitHub:
             return httpx.Response(302, headers={"location": self.redirect})
         if request.url.host.endswith("blob.core.windows.net"):
             return httpx.Response(200, content=self.archive)
+        if path == "/api/v2.0/ping":
+            return httpx.Response(200 if self.harbor_ready() else 503, text="Pong")
         return httpx.Response(404)
 
 
@@ -223,6 +226,21 @@ def test_main_end_to_end_writes_provenance_without_secrets(tmp_path, monkeypatch
     assert not os.path.exists(seen["path"])
     if os.name != "nt":
         assert seen["mode"] == 0o600
+
+
+def test_waits_for_harbor_readiness_then_times_out():
+    fake = FakeGitHub([], {})
+    answers = iter([False, False, True])
+    fake.harbor_ready = lambda: next(answers)
+    sleeps = []
+    pub.wait_for_harbor("harbor.example.com", 100, 15, transport=httpx.MockTransport(fake), sleep=sleeps.append)
+    assert sleeps == [15, 15]
+    never = FakeGitHub([], {})
+    never.harbor_ready = lambda: False
+    now = {"t": 0}
+    with pytest.raises(pub.PublishError, match="Harbor did not become ready"):
+        pub.wait_for_harbor("harbor.example.com", 30, 15, transport=httpx.MockTransport(never),
+                            sleep=lambda s: now.update(t=now["t"] + s), clock=lambda: now["t"])
 
 
 def test_main_refuses_debug_tracing(monkeypatch):
