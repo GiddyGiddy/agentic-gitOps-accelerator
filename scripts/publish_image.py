@@ -145,10 +145,23 @@ def fetch_evidence(github, repo, commit, candidate, registry):
         raise PublishError(str(error)) from error
 
 
+_REDACTIONS = []
+
+
+def _sanitize(text):
+    for secret in _REDACTIONS:
+        if secret:
+            text = text.replace(secret, "<redacted>")
+    text = re.sub(r"(?i)(bearer|basic)\s+[A-Za-z0-9._~+/=-]+", r"\1 <redacted>", text)
+    return text
+
+
 def run_skopeo(args):
     result = subprocess.run(["skopeo", *args], capture_output=True, check=False)
     if result.returncode != 0:
-        raise PublishError(f"skopeo {args[0]} failed with exit code {result.returncode}")
+        detail = _sanitize(result.stderr.decode("utf-8", "replace")).strip().splitlines()
+        tail = " | ".join(line.strip() for line in detail[-4:])[:600]
+        raise PublishError(f"skopeo {args[0]} failed with exit code {result.returncode}: {tail}")
     return result.stdout
 
 
@@ -179,9 +192,11 @@ def copy_and_verify(source, digest, destination_repository, tag, src_authfile, d
 
 
 def _env(name, pattern):
-    value = os.environ.get(name, "")
+    value = os.environ.get(name)
+    if not value:
+        raise PublishError(f"{name} is not set (check the CI/CD variable's environment scope and protection)")
     if not pattern.fullmatch(value):
-        raise PublishError(f"{name} is missing or invalid")
+        raise PublishError(f"{name} has an invalid format")
     return value
 
 
@@ -217,6 +232,8 @@ def main(skopeo=run_skopeo, transport=None, sleep=time.sleep):
         token = handle.read().strip()
     if not harbor_password:
         raise PublishError("HARBOR_PASSWORD_FILE is empty")
+    _REDACTIONS.extend([harbor_password, token])
+    print(f"Harbor user: {harbor_user} (password length {len(harbor_password)})", flush=True)
     timeout = int(os.environ.get("GITHUB_WAIT_SECONDS", "1200"))
     github = GitHub(token or None, transport=transport)
     candidate = wait_for_candidate(github, repo, commit, timeout, int(os.environ.get("GITHUB_POLL_SECONDS", "30")), sleep=sleep)
