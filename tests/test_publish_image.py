@@ -243,6 +243,29 @@ def test_waits_for_harbor_readiness_then_times_out():
                             sleep=lambda s: now.update(t=now["t"] + s), clock=lambda: now["t"])
 
 
+def test_skopeo_failures_show_sanitized_stderr(monkeypatch):
+    class Result:
+        returncode = 1
+        stdout = b""
+        stderr = b'time=1 level=fatal msg="copying: unauthorized: authentication required for hunter2"\n'
+
+    monkeypatch.setattr(pub.subprocess, "run", lambda *a, **k: Result())
+    monkeypatch.setattr(pub, "_REDACTIONS", ["hunter2"])
+    with pytest.raises(pub.PublishError) as caught:
+        pub.run_skopeo(["copy", "x"])
+    message = str(caught.value)
+    assert "unauthorized" in message and "hunter2" not in message and "<redacted>" in message
+
+
+def test_missing_and_invalid_settings_are_reported_differently(monkeypatch):
+    monkeypatch.delenv("HARBOR_USERNAME", raising=False)
+    with pytest.raises(pub.PublishError, match="HARBOR_USERNAME is not set"):
+        pub._env("HARBOR_USERNAME", pub._HOST)
+    monkeypatch.setenv("HARBOR_USERNAME", "BAD VALUE")
+    with pytest.raises(pub.PublishError, match="HARBOR_USERNAME has an invalid format"):
+        pub._env("HARBOR_USERNAME", pub._HOST)
+
+
 def test_main_refuses_debug_tracing(monkeypatch):
     monkeypatch.setenv("CI_DEBUG_TRACE", "true")
     with pytest.raises(pub.PublishError, match="debug tracing"):
