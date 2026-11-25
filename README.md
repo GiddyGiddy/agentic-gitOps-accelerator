@@ -87,9 +87,9 @@ not a signed attestation.
 
 The opt-in `publish_image` job in `.gitlab-ci.yml` runs
 [`scripts/publish_image.py`](scripts/publish_image.py) on the dedicated runner
-(tag `harbor-image-publisher`). It is off unless `IMAGE_PUBLISH_ENABLED=true` on
-a protected default-branch push and `IMAGE_PUBLISHER_TOOL_IMAGE` is
-digest-pinned (build it from [`deploy/publisher/Dockerfile`](deploy/publisher/Dockerfile)).
+(tag `harbor-image-publisher`). It is off unless `IMAGE_PUBLISH_ENABLED` is the
+exact string `true` (not `True`) on a protected default-branch **push** pipeline,
+and `IMAGE_PUBLISHER_TOOL_IMAGE` is digest-pinned (build it from [`deploy/publisher/Dockerfile`](deploy/publisher/Dockerfile)).
 It waits up to `GITHUB_WAIT_SECONDS` (default 1200) for the GitHub run for the
 exact commit, requires exactly one successful `Publish image to ACR` attempt,
 downloads that attempt's artifact (bounded, without forwarding the GitHub token
@@ -101,7 +101,9 @@ Harbor manifest digest. Protected variables: `GITHUB_TOKEN_FILE` (file),
 `DOCKER_AUTH_CONFIG` (so the runner can pull the private tool image), and the
 existing `HARBOR_USERNAME` / `HARBOR_PASSWORD_FILE`. The controller does not
 check GitHub before starting compute, so a slow GitHub run consumes VM and AKS
-time until the job times out.
+time until the job times out. GitLab decides which jobs exist when a pipeline is
+created, so changing a CI variable only affects the next push pipeline; retrying an
+existing pipeline, or running one manually (source `web`), does not create the job.
 
 ### Publisher controller (prepared, disabled)
 
