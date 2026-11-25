@@ -1,0 +1,427 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "subscriptionId": { "type": "String", "defaultValue": "" },
+    "resourceGroup": { "type": "String", "defaultValue": "" },
+    "vmName": { "type": "String", "defaultValue": "" },
+    "aksName": { "type": "String", "defaultValue": "" },
+    "stateBlobUrl": { "type": "String", "defaultValue": "" },
+    "secretUrl": { "type": "String", "defaultValue": "" },
+    "gitlabApiUrl": { "type": "String", "defaultValue": "" },
+    "projectId": { "type": "String", "defaultValue": "" },
+    "runnerId": { "type": "Int", "defaultValue": 0 },
+    "publisherTag": { "type": "String", "defaultValue": "" },
+    "runnerUnit": { "type": "String", "defaultValue": "" },
+    "identityId": { "type": "String", "defaultValue": "" },
+    "admissionEnabled": { "type": "Bool", "defaultValue": false },
+    "budgetSeconds": { "type": "Int", "defaultValue": 72000 },
+    "admissionMarginMinutes": { "type": "Int", "defaultValue": 80 },
+    "startTimeoutMinutes": { "type": "Int", "defaultValue": 45 },
+    "runnerGraceMinutes": { "type": "Int", "defaultValue": 15 },
+    "maxRunMinutes": { "type": "Int", "defaultValue": 100 }
+  },
+  "triggers": {
+    "Every_5_minutes": {
+      "type": "Recurrence",
+      "recurrence": { "frequency": "Minute", "interval": 5 },
+      "runtimeConfiguration": {
+        "concurrency": { "runs": 1, "maximumWaitingRuns": 1 }
+      }
+    }
+  },
+  "actions": {
+    "Get_State": {
+      "type": "Http",
+      "runAfter": {},
+      "inputs": {
+        "method": "GET",
+        "uri": "@parameters('stateBlobUrl')",
+        "headers": { "x-ms-version": "2023-11-03" },
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('identityId')",
+          "audience": "https://storage.azure.com/"
+        },
+        "retryPolicy": { "type": "none" }
+      }
+    },
+    "State": {
+      "type": "Compose",
+      "runAfter": { "Get_State": ["Succeeded"] },
+      "inputs": "@json(string(body('Get_State')))"
+    },
+    "Get_VM": {
+      "type": "Http",
+      "runAfter": { "State": ["Succeeded"] },
+      "inputs": {
+        "method": "GET",
+        "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.Compute/virtualMachines/',parameters('vmName'),'/instanceView?api-version=2024-07-01')",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('identityId')",
+          "audience": "https://management.azure.com/"
+        },
+        "retryPolicy": { "type": "none" }
+      }
+    },
+    "Get_AKS": {
+      "type": "Http",
+      "runAfter": { "Get_VM": ["Succeeded", "Failed", "TimedOut"] },
+      "inputs": {
+        "method": "GET",
+        "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.ContainerService/managedClusters/',parameters('aksName'),'?api-version=2024-09-01')",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('identityId')",
+          "audience": "https://management.azure.com/"
+        },
+        "retryPolicy": { "type": "none" }
+      }
+    },
+    "Get_Token": {
+      "type": "Http",
+      "runAfter": { "Get_AKS": ["Succeeded", "Failed", "TimedOut"] },
+      "runtimeConfiguration": { "secureData": { "properties": ["outputs"] } },
+      "inputs": {
+        "method": "GET",
+        "uri": "@parameters('secretUrl')",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('identityId')",
+          "audience": "https://vault.azure.net"
+        },
+        "retryPolicy": { "type": "none" }
+      }
+    },
+    "Get_Jobs": {
+      "type": "Http",
+      "runAfter": { "Get_Token": ["Succeeded", "Failed", "TimedOut"] },
+      "runtimeConfiguration": { "secureData": { "properties": ["inputs", "outputs"] } },
+      "inputs": {
+        "method": "GET",
+        "uri": "@concat(parameters('gitlabApiUrl'),'/projects/',parameters('projectId'),'/jobs?per_page=100')",
+        "headers": { "PRIVATE-TOKEN": "@body('Get_Token')?['value']" },
+        "retryPolicy": { "type": "none" }
+      }
+    },
+    "Filter_VM_Power": {
+      "type": "Query",
+      "runAfter": { "Get_Jobs": ["Succeeded", "Failed", "TimedOut"] },
+      "inputs": {
+        "from": "@body('Get_VM')?['statuses']",
+        "where": "@startsWith(item()?['code'],'PowerState/')"
+      }
+    },
+    "Filter_Active": {
+      "type": "Query",
+      "runAfter": { "Filter_VM_Power": ["Succeeded", "Failed", "TimedOut"] },
+      "runtimeConfiguration": { "secureData": { "properties": ["inputs", "outputs"] } },
+      "inputs": {
+        "from": "@body('Get_Jobs')",
+        "where": "@and(equals(item()?['runner']?['id'],parameters('runnerId')),contains(createArray('created','pending','preparing','running','canceling','waiting_for_resource'),item()?['status']))"
+      }
+    },
+    "Filter_Pending": {
+      "type": "Query",
+      "runAfter": { "Filter_Active": ["Succeeded", "Failed", "TimedOut"] },
+      "runtimeConfiguration": { "secureData": { "properties": ["inputs", "outputs"] } },
+      "inputs": {
+        "from": "@body('Get_Jobs')",
+        "where": "@and(equals(item()?['status'],'pending'),contains(coalesce(item()?['tag_list'],json('[]')),parameters('publisherTag')))"
+      }
+    },
+    "Now": {
+      "type": "Compose",
+      "runAfter": { "Filter_Pending": ["Succeeded", "Failed", "TimedOut"] },
+      "inputs": "@utcNow()"
+    },
+    "Month": {
+      "type": "Compose",
+      "runAfter": { "Now": ["Succeeded"] },
+      "inputs": "@convertTimeZone(outputs('Now'),'UTC','W. Europe Standard Time','yyyy-MM')"
+    },
+    "NearMonthEnd": {
+      "type": "Compose",
+      "runAfter": { "Month": ["Succeeded"] },
+      "inputs": "@not(equals(convertTimeZone(addToTime(outputs('Now'),parameters('admissionMarginMinutes'),'Minute'),'UTC','W. Europe Standard Time','yyyy-MM'),outputs('Month')))"
+    },
+    "VmPower": {
+      "type": "Compose",
+      "runAfter": { "NearMonthEnd": ["Succeeded"] },
+      "inputs": "@if(and(equals(actions('Get_VM')?['status'],'Succeeded'),equals(actions('Filter_VM_Power')?['status'],'Succeeded')),first(body('Filter_VM_Power'))?['code'],null)"
+    },
+    "AksPower": {
+      "type": "Compose",
+      "runAfter": { "VmPower": ["Succeeded"] },
+      "inputs": "@if(equals(actions('Get_AKS')?['status'],'Succeeded'),if(equals(body('Get_AKS')?['properties']?['provisioningState'],'Succeeded'),body('Get_AKS')?['properties']?['powerState']?['code'],'Transitioning'),null)"
+    },
+    "JobsKnown": {
+      "type": "Compose",
+      "runAfter": { "AksPower": ["Succeeded"] },
+      "inputs": "@if(equals(actions('Get_Jobs')?['status'],'Succeeded'),and(equals(actions('Filter_Active')?['status'],'Succeeded'),equals(actions('Filter_Pending')?['status'],'Succeeded'),less(length(body('Get_Jobs')),100)),false)"
+    },
+    "Elapsed": {
+      "type": "Compose",
+      "runAfter": { "JobsKnown": ["Succeeded"] },
+      "inputs": "@div(sub(ticks(outputs('Now')),ticks(outputs('State')?['lastObservedUtc'])),10000000)"
+    },
+    "AnyActive": {
+      "type": "Compose",
+      "runAfter": { "Elapsed": ["Succeeded"] },
+      "inputs": "@not(and(equals(outputs('VmPower'),'PowerState/deallocated'),equals(outputs('AksPower'),'Stopped')))"
+    },
+    "GapUncertain": {
+      "type": "Compose",
+      "runAfter": { "AnyActive": ["Succeeded"] },
+      "inputs": "@and(greater(outputs('Elapsed'),900),or(outputs('State')?['lastActive'],outputs('AnyActive')))"
+    },
+    "Used": {
+      "type": "Compose",
+      "runAfter": { "GapUncertain": ["Succeeded"] },
+      "inputs": "@add(if(equals(outputs('State')?['month'],outputs('Month')),outputs('State')?['usedSeconds'],0),if(or(outputs('GapUncertain'),not(or(outputs('State')?['lastActive'],outputs('AnyActive')))),0,max(0,outputs('Elapsed'))))"
+    },
+    "Uncertain": {
+      "type": "Compose",
+      "runAfter": { "Used": ["Succeeded"] },
+      "inputs": "@or(outputs('State')?['uncertain'],outputs('GapUncertain'))"
+    },
+    "Admission": {
+      "type": "Compose",
+      "runAfter": { "Uncertain": ["Succeeded"] },
+      "inputs": "@and(parameters('admissionEnabled'),not(outputs('Uncertain')),not(outputs('NearMonthEnd')),outputs('JobsKnown'),greaterOrEquals(sub(parameters('budgetSeconds'),outputs('Used')),mul(parameters('admissionMarginMinutes'),60)))"
+    },
+    "Decision": {
+      "type": "Compose",
+      "runAfter": { "Admission": ["Succeeded"] },
+      "inputs": "@if(or(empty(outputs('VmPower')),empty(outputs('AksPower'))),'unknown',if(equals(outputs('State')?['phase'],'idle'),if(and(equals(outputs('VmPower'),'PowerState/deallocated'),equals(outputs('AksPower'),'Stopped')),if(if(outputs('Admission'),greater(length(body('Filter_Pending')),0),false),'start',if(outputs('Uncertain'),'frozen','none')),'foreign'),if(equals(outputs('State')?['phase'],'starting'),if(greater(div(sub(ticks(outputs('Now')),ticks(outputs('State')?['startedUtc'])),10000000),mul(parameters('startTimeoutMinutes'),60)),'abort',if(and(equals(outputs('VmPower'),'PowerState/running'),equals(outputs('AksPower'),'Running')),'startRunner',if(or(equals(outputs('VmPower'),'PowerState/deallocated'),equals(outputs('AksPower'),'Stopped')),if(greater(div(sub(ticks(outputs('Now')),ticks(outputs('State')?['startedUtc'])),10000000),600),'retryStart','wait'),'wait'))),if(equals(outputs('State')?['phase'],'running'),if(or(not(equals(outputs('VmPower'),'PowerState/running')),not(equals(outputs('AksPower'),'Running'))),'stopped',if(greater(div(sub(ticks(outputs('Now')),ticks(outputs('State')?['runnerStartedUtc'])),10000000),mul(parameters('maxRunMinutes'),60)),'overrun',if(if(outputs('JobsKnown'),and(equals(length(body('Filter_Active')),0),greater(div(sub(ticks(outputs('Now')),ticks(outputs('State')?['runnerStartedUtc'])),10000000),mul(parameters('runnerGraceMinutes'),60))),false),'stop','wait'))),if(equals(outputs('State')?['phase'],'stopping'),if(and(equals(outputs('VmPower'),'PowerState/deallocated'),equals(outputs('AksPower'),'Stopped')),'finished',if(or(contains(createArray('PowerState/running','PowerState/stopped'),outputs('VmPower')),equals(outputs('AksPower'),'Running')),'stop','wait')),'unknown')))))"
+    },
+    "NewState": {
+      "type": "Compose",
+      "runAfter": { "Decision": ["Succeeded"] },
+      "inputs": "@setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(setProperty(outputs('State'),'month',outputs('Month')),'usedSeconds',outputs('Used')),'lastObservedUtc',outputs('Now')),'lastActive',outputs('AnyActive')),'uncertain',outputs('Uncertain')),'phase',if(equals(outputs('Decision'),'start'),'starting',if(equals(outputs('Decision'),'startRunner'),'running',if(contains(createArray('stop','overrun','abort','stopped'),outputs('Decision')),'stopping',if(equals(outputs('Decision'),'finished'),'idle',outputs('State')?['phase']))))),'startedUtc',if(equals(outputs('Decision'),'start'),outputs('Now'),outputs('State')?['startedUtc'])),'runnerStartedUtc',if(equals(outputs('Decision'),'startRunner'),outputs('Now'),outputs('State')?['runnerStartedUtc']))"
+    },
+    "Apply_Decision": {
+      "type": "If",
+      "runAfter": { "NewState": ["Succeeded"] },
+      "expression": {
+        "and": [
+          { "not": { "equals": ["@outputs('Decision')", "unknown"] } }
+        ]
+      },
+      "actions": {
+        "Write_State": {
+          "type": "Http",
+          "runAfter": {},
+          "inputs": {
+            "method": "PUT",
+            "uri": "@parameters('stateBlobUrl')",
+            "headers": {
+              "x-ms-version": "2023-11-03",
+              "x-ms-blob-type": "BlockBlob",
+              "Content-Type": "application/json",
+              "If-Match": "@coalesce(outputs('Get_State')?['headers']?['ETag'],'invalid')"
+            },
+            "body": "@string(outputs('NewState'))",
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "identity": "@parameters('identityId')",
+              "audience": "https://storage.azure.com/"
+            },
+            "retryPolicy": { "type": "none" }
+          }
+        },
+        "Mutate": {
+          "type": "Switch",
+          "runAfter": { "Write_State": ["Succeeded"] },
+          "expression": "@if(contains(createArray('stop','overrun','abort','stopped'),outputs('Decision')),'stop',outputs('Decision'))",
+          "cases": {
+            "Start": {
+              "case": "start",
+              "actions": {
+                "Start_VM": {
+                  "type": "Http",
+                  "runAfter": {},
+                  "operationOptions": "DisableAsyncPattern",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.Compute/virtualMachines/',parameters('vmName'),'/start?api-version=2024-07-01')",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "identity": "@parameters('identityId')",
+                      "audience": "https://management.azure.com/"
+                    },
+                    "retryPolicy": { "type": "none" }
+                  }
+                },
+                "Start_AKS": {
+                  "type": "Http",
+                  "runAfter": { "Start_VM": ["Succeeded", "Failed", "TimedOut"] },
+                  "operationOptions": "DisableAsyncPattern",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.ContainerService/managedClusters/',parameters('aksName'),'/start?api-version=2024-09-01')",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "identity": "@parameters('identityId')",
+                      "audience": "https://management.azure.com/"
+                    },
+                    "retryPolicy": { "type": "none" }
+                  }
+                }
+              }
+            },
+            "Retry_start": {
+              "case": "retryStart",
+              "actions": {
+                "If_VM_deallocated": {
+                  "type": "If",
+                  "runAfter": {},
+                  "expression": { "and": [{ "equals": ["@outputs('VmPower')", "PowerState/deallocated"] }] },
+                  "actions": {
+                    "Retry_VM_start": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "operationOptions": "DisableAsyncPattern",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.Compute/virtualMachines/',parameters('vmName'),'/start?api-version=2024-07-01')",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity",
+                          "identity": "@parameters('identityId')",
+                          "audience": "https://management.azure.com/"
+                        },
+                        "retryPolicy": { "type": "none" }
+                      }
+                    }
+                  },
+                  "else": { "actions": {} }
+                },
+                "If_AKS_stopped": {
+                  "type": "If",
+                  "runAfter": { "If_VM_deallocated": ["Succeeded", "Failed", "TimedOut"] },
+                  "expression": { "and": [{ "equals": ["@outputs('AksPower')", "Stopped"] }] },
+                  "actions": {
+                    "Retry_AKS_start": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "operationOptions": "DisableAsyncPattern",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.ContainerService/managedClusters/',parameters('aksName'),'/start?api-version=2024-09-01')",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity",
+                          "identity": "@parameters('identityId')",
+                          "audience": "https://management.azure.com/"
+                        },
+                        "retryPolicy": { "type": "none" }
+                      }
+                    }
+                  },
+                  "else": { "actions": {} }
+                }
+              }
+            },
+            "Start_runner": {
+              "case": "startRunner",
+              "actions": {
+                "Run_command": {
+                  "type": "Http",
+                  "runAfter": {},
+                  "operationOptions": "DisableAsyncPattern",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.Compute/virtualMachines/',parameters('vmName'),'/runCommand?api-version=2024-07-01')",
+                    "body": {
+                      "commandId": "RunShellScript",
+                      "script": ["systemctl start --no-block @{parameters('runnerUnit')}"]
+                    },
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "identity": "@parameters('identityId')",
+                      "audience": "https://management.azure.com/"
+                    },
+                    "retryPolicy": { "type": "none" }
+                  }
+                }
+              }
+            },
+            "Stop": {
+              "case": "stop",
+              "actions": {
+                "If_VM_needs_deallocation": {
+                  "type": "If",
+                  "runAfter": {},
+                  "expression": "@contains(createArray('PowerState/running','PowerState/stopped'),outputs('VmPower'))",
+                  "actions": {
+                    "Deallocate_VM": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "operationOptions": "DisableAsyncPattern",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.Compute/virtualMachines/',parameters('vmName'),'/deallocate?api-version=2024-07-01')",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity",
+                          "identity": "@parameters('identityId')",
+                          "audience": "https://management.azure.com/"
+                        },
+                        "retryPolicy": { "type": "none" }
+                      }
+                    }
+                  },
+                  "else": { "actions": {} }
+                },
+                "If_AKS_running": {
+                  "type": "If",
+                  "runAfter": { "If_VM_needs_deallocation": ["Succeeded", "Failed", "TimedOut"] },
+                  "expression": { "and": [{ "equals": ["@outputs('AksPower')", "Running"] }] },
+                  "actions": {
+                    "Stop_AKS": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "operationOptions": "DisableAsyncPattern",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@concat('https://management.azure.com/subscriptions/',parameters('subscriptionId'),'/resourceGroups/',parameters('resourceGroup'),'/providers/Microsoft.ContainerService/managedClusters/',parameters('aksName'),'/stop?api-version=2024-09-01')",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity",
+                          "identity": "@parameters('identityId')",
+                          "audience": "https://management.azure.com/"
+                        },
+                        "retryPolicy": { "type": "none" }
+                      }
+                    }
+                  },
+                  "else": { "actions": {} }
+                }
+              }
+            }
+          },
+          "default": { "actions": {} }
+        }
+      },
+      "else": { "actions": {} }
+    },
+    "Signal_attention": {
+      "type": "If",
+      "runAfter": { "Apply_Decision": ["Succeeded"] },
+      "expression": "@contains(createArray('unknown','frozen','foreign','abort','overrun','stopped'),outputs('Decision'))",
+      "actions": {
+        "Fail_run": {
+          "type": "Terminate",
+          "runAfter": {},
+          "inputs": {
+            "runStatus": "Failed",
+            "runError": {
+              "code": "ControllerAttention",
+              "message": "@concat('Controller decision requires attention: ',outputs('Decision'))"
+            }
+          }
+        }
+      },
+      "else": { "actions": {} }
+    }
+  },
+  "outputs": {}
+}

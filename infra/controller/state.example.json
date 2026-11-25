@@ -1,0 +1,10 @@
+{
+  "month": "1970-01",
+  "usedSeconds": 72000,
+  "lastObservedUtc": "1970-01-01T00:00:00Z",
+  "lastActive": false,
+  "uncertain": true,
+  "phase": "idle",
+  "startedUtc": "1970-01-01T00:00:00Z",
+  "runnerStartedUtc": "1970-01-01T00:00:00Z"
+}

@@ -47,3 +47,27 @@ publish_chart:
     paths:
       - gitops-provenance.json
 
+publish_image:
+  stage: publish
+  image:
+    name: $IMAGE_PUBLISHER_TOOL_IMAGE
+    entrypoint: [""]
+  tags:
+    - harbor-image-publisher
+  environment:
+    name: harbor-image-publish
+  resource_group: harbor-image-publish
+  timeout: 45m
+  variables:
+    GITHUB_REPOSITORY: GiddyGiddy/agentic-gitOps-accelerator
+    HARBOR_HOST: harbor.giddyitsolutions.com
+    HARBOR_IMAGE_REPOSITORY: charts/agentic-gitops-staging
+  rules:
+    - if: '$IMAGE_PUBLISH_ENABLED == "true" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $CI_DEBUG_TRACE != "true" && $IMAGE_PUBLISHER_TOOL_IMAGE =~ /^\S+@sha256:[a-f0-9]{64}$/'
+    - when: never
+  script:
+    - python scripts/publish_image.py
+  artifacts:
+    paths:
+      - image-provenance.json
+
