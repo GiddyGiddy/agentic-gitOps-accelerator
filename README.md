@@ -77,6 +77,54 @@ operators structured review points rather than silently changing the cluster.
 These are aids to human diagnosis, not automatic fixes or replacements for
 protected branches, CI checks, monitoring and independent validation.
 
+### GitHub image evidence and the Harbor publisher (staging)
+
+The GitHub CI workflow publishes the staging image to ACR on `main` and uploads
+`image-digest-<commit>-<run-id>-<attempt>` with the image digest, commit, run
+ID and attempt. [`scripts/image_digest_evidence.py`](scripts/image_digest_evidence.py)
+validates that archive (exact single file, strict format, size limits). This is
+not a signed attestation.
+
+The opt-in `publish_image` job in `.gitlab-ci.yml` runs
+[`scripts/publish_image.py`](scripts/publish_image.py) on the dedicated runner
+(tag `harbor-image-publisher`). It is off unless `IMAGE_PUBLISH_ENABLED=true` on
+a protected default-branch push and `IMAGE_PUBLISHER_TOOL_IMAGE` is
+digest-pinned (build it from [`deploy/publisher/Dockerfile`](deploy/publisher/Dockerfile)).
+It waits up to `GITHUB_WAIT_SECONDS` (default 1200) for the GitHub run for the
+exact commit, requires exactly one successful `Publish image to ACR` attempt,
+downloads that attempt's artifact (bounded, without forwarding the GitHub token
+to the redirect), validates it, waits up to `HARBOR_WAIT_SECONDS` (default 900)
+for Harbor's `/api/v2.0/ping` (AKS reports `Running` before Harbor is ready),
+copies the image from ACR to Harbor **by digest** with skopeo, and verifies the
+Harbor manifest digest. Protected variables: `GITHUB_TOKEN_FILE` (file),
+`ACR_AUTHFILE` (file, pull-only ACR token auth JSON), `ACR_REGISTRY`,
+`DOCKER_AUTH_CONFIG` (so the runner can pull the private tool image), and the
+existing `HARBOR_USERNAME` / `HARBOR_PASSWORD_FILE`. The controller does not
+check GitHub before starting compute, so a slow GitHub run consumes VM and AKS
+time until the job times out.
+
+### Publisher controller (prepared, disabled)
+
+[`infra/controller`](infra/controller) contains a separate Terraform root and a
+Logic Apps Consumption workflow that reconciles every five minutes. It keeps
+durable state in an Entra-only blob, counts Europe/Berlin monthly active time,
+starts the retained VM and AKS only when `admission_enabled` is true and an
+eligible pending tagged job exists, starts the runner
+([`gitops-image-publisher-runner.service`](deploy/staging/gitops-image-publisher-runner.service),
+one build, 300 s idle timeout) with Azure Run Command, and deallocates only
+resources it owns. Shutdown never depends on GitLab being reachable: a run
+beyond the maximum window is stopped even when job state is unknown, while
+ambiguous job state otherwise blocks an early stop. Unexpected activity,
+unknown state or an unobserved active gap fails the run for alerting and blocks
+new starts until `state.json` is repaired (`state.example.json` fails closed).
+It is deployed disabled; the live lifecycle (AKS start, Run Command, idle stop,
+VM deallocate, AKS stop) was exercised with admission disabled, but a start
+triggered by a real pending job has not been. Enabling it with
+`workflow_enabled=true` also creates a heartbeat alert. 
+
+The runner config template is
+[`image-publisher-runner.toml.example`](deploy/staging/image-publisher-runner.toml.example)
+(token never in the repository).
 ## Run locally
 
 Requires Python 3.11+ and PostgreSQL. From the project root:
