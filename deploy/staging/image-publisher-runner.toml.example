@@ -1,0 +1,17 @@
+# Template for the protected /etc/gitlab-runner/image-publisher.toml on the VM.
+# `gitlab-runner register` writes the runner authentication token; never place
+# a token in this repository, Terraform, Run Command scripts or chat.
+concurrent = 1
+check_interval = 5
+
+[[runners]]
+  name = "gitops-image-publisher"
+  url = "https://gitlab.cgi-berlin.cloud"
+  executor = "docker"
+  [runners.docker]
+    image = "alpine:3.21"
+    privileged = false
+    disable_cache = true
+    # Do not mount /var/run/docker.sock or host paths into jobs.
+    volumes = []
+    pull_policy = ["always"]
